@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <string.h>
@@ -258,62 +259,7 @@ static void json_string_append_norealloc(struct json_string *str, const char *da
     str->size += size;
 }
 
-static json_res_t json_string_append(struct json_string *str, const char *data, uint32_t size, uint32_t *capacity) {
-    if (str->size + size > *capacity) {
-        uint32_t new_capacity = *capacity + size + 8;
-        str->data = realloc(str->data, new_capacity);
-        if (!str->data)
-            return JSON_ERROR;
-        *capacity = new_capacity;
-    }
-
-    json_string_append_norealloc(str, data, size);
-    return JSON_OK;
-}
-
-static json_res_t json_string_parse_with_unknown_len(struct json_string *str, struct jiffy_parser *ctx, uint32_t start_capacity) {
-    static_assert(CHAR_BIT == 8, "unexpected char size");
-    static const bool str_parse_table[1 << CHAR_BIT] = {
-        ['"'] = true,
-        ['\\'] = true,
-    };
-
-    uint32_t capacity = start_capacity;
-    str->data = (char *)malloc(capacity);
-    assert(str->data);
-    str->size = 0;
-
-    for (;;) {
-        int i;
-        const uint8_t *src_data = (const uint8_t *)ctx->data;
-        uint32_t src_data_size = ctx->data_size;
-        for (i = 0; i < src_data_size && !str_parse_table[src_data[i]]; ++i) {}
-
-        if (i != 0) {
-            if (json_string_append(str, (const char *)src_data, i, &capacity) != JSON_OK)
-                return JSON_ERROR;
-
-            jiffy_parser_skip_n_bytes(ctx, i);
-        }
-
-        if (ctx->data[0] == '"') {
-            jiffy_parser_skip_one_byte(ctx);
-            return JSON_OK;
-        }
-
-        if (ctx->data[0] == '\\') {
-            if (json_string_append(str, ctx->data + 1, 1, &capacity) != JSON_OK)
-                return JSON_ERROR;
-
-            jiffy_parser_skip_n_bytes(ctx, 2);
-            continue;
-        }
-
-        abort();
-    }
-}
-
-static json_res_t json_string_parse_with_known_len(struct json_string *str, struct jiffy_parser *ctx, uint32_t len) {
+static json_res_t json_string_parse_with_known_max_len(struct json_string *str, struct jiffy_parser *ctx, uint32_t len) {
     str->data = (char *)malloc(len);
     assert(str->data);
     str->size = 0;
@@ -341,6 +287,23 @@ static json_res_t json_string_parse_with_known_len(struct json_string *str, stru
     }
 }
 
+static const char *json_string_get_end(const char *str, uint32_t str_size) {
+    for (;;) {
+        const char *closing_quote_pos = memchr(str, '"', str_size);
+        if (!closing_quote_pos)
+            return NULL;
+
+        if (closing_quote_pos[-1] == '\\') {
+            uint32_t diff = closing_quote_pos - str + 1;
+            str += diff;
+            str_size -= diff;
+            continue;
+        }
+
+        return closing_quote_pos;
+    }
+}
+
 static HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_parser *ctx) {
     EXPECT_CH('"', ctx);
 
@@ -349,25 +312,28 @@ static HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_pa
         return JSON_ERROR;
 
     uint32_t size = closing_quote_pos - ctx->data;
-    if (closing_quote_pos[-1] == '\\')
-        return json_string_parse_with_unknown_len(str, ctx, size);
-
-    if (is_next_backslash_before(ctx, closing_quote_pos))
-        return json_string_parse_with_known_len(str, ctx, size);
-
-    if (size == 0) { // optimized apth for empty string
+    if (size == 0) { // optimized path for empty string
         str->data = NULL;
         str->size = 0;
         ASSERT_CH('"', ctx);
         return JSON_OK;
     }
 
+    if (closing_quote_pos[-1] == '\\') {
+        const char *json_string_end = json_string_get_end(closing_quote_pos + STRLN("\""), ctx->data_size - size - STRLN("\""));
+        if (!json_string_end)
+            return JSON_ERROR;
+        return json_string_parse_with_known_max_len(str, ctx, json_string_end - ctx->data);
+    }
+
+    if (is_next_backslash_before(ctx, closing_quote_pos))
+        return json_string_parse_with_known_max_len(str, ctx, size);
+
     str->data = (char *)ctx->data;
     str->size = size;
     // TODO: make flag that we don't own string
 
-    jiffy_parser_skip_n_bytes(ctx, size);
-    ASSERT_CH('"', ctx);
+    jiffy_parser_skip_n_bytes(ctx, size + STRLN("\""));
     return JSON_OK;
 }
 
@@ -446,23 +412,18 @@ static json_res_t json_array_parse(struct jiffy_json_value *val, struct jiffy_pa
 static json_res_t json_number_parse(struct jiffy_json_value *val, struct jiffy_parser *ctx) {
     val->value_type = JVT_NUMBER;
 
-    char buf[64];
-    uint32_t buf_len = 0;
-    bool ended = false;
-    while (ctx->data_size && buf_len < sizeof(buf)) {
-        if (!(isdigit(ctx->data[0]) || ctx->data[0] == 'e' || ctx->data[0] == 'E' || ctx->data[0] == '-' || ctx->data[0] == '.')) {
-            ended = true;
-            break;
-        }
-        buf[buf_len++] = ctx->data[0];
-        jiffy_parser_skip_one_byte(ctx);
-    }
-    if (!ended)
-        return JSON_ERROR;
+    // XXX: it's safe to call strtod, because we've already checked,
+    // that input contains '}' at the end
 
-    assert(buf_len);
-    buf[buf_len] = '\0';
-    val->num_val = atof(buf);
+    errno = 0;
+    char *end;
+    val->num_val = strtod(ctx->data, &end);
+    uint32_t val_size = end - ctx->data;
+    if (!val_size)
+        return JSON_ERROR;
+    if (errno)
+        return JSON_ERROR;
+    jiffy_parser_skip_n_bytes(ctx, val_size);
     return JSON_OK;
 }
 

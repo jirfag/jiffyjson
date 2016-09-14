@@ -623,6 +623,8 @@ struct jiffy_json_value *jiffy_parser_parse(struct jiffy_parser *parser) {
             .ctx = ra,
         };
     }
+    jvector_ensure(&parser->kv_cache, 64);
+    jvector_ensure(&parser->values_cache, 64);
     struct jiffy_json_value *val = small_object_alloc(parser, sizeof(*val));
     json_res_t r = json_parse_impl(val, parser);
 #define MIN(a_, b_) (a_ < b_ ? a_ : b_)

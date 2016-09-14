@@ -163,8 +163,9 @@ static FORCE_INLINE void jiffy_parser_skip_n_bytes(struct jiffy_parser *ctx, uin
     ctx->data_size -= n;
 }
 
+// XXX: don't check data_size because it was checked once at the start: data ends with '}'
 #define EXPECT_CH(ch_, ctx_) ({ \
-    bool is_error_ = (ctx_)->data_size == 0 || (ctx_)->data[0] != ch_; \
+    bool is_error_ = (ctx_)->data[0] != ch_; \
     if (__builtin_expect(is_error_, false) == true) { \
         printf("expected '%c', got '%c'\n", ch_, (ctx_)->data_size ? (ctx_)->data[0] : '\0'); \
         return JSON_ERROR; \
@@ -177,19 +178,8 @@ static FORCE_INLINE void jiffy_parser_skip_n_bytes(struct jiffy_parser *ctx, uin
     jiffy_parser_skip_one_byte((ctx_)); \
 })
 
-#define EXPECT_ANY_CH(ctx_) ({ \
-    if ((ctx_)->data_size == 0) \
-        return JSON_ERROR; \
-    jiffy_parser_skip_one_byte((ctx_)); \
-})
-
 #define EXPECT_END(ctx_) ({ \
     if ((ctx_)->data_size != 0 ) \
-        return JSON_ERROR; \
-})
-
-#define EXPECT_NOT_END(ctx_) ({ \
-    if ((ctx_)->data_size == 0 ) \
         return JSON_ERROR; \
 })
 
@@ -247,7 +237,7 @@ static void skip_wsp_expect_one_space(struct jiffy_parser *ctx) {
     if (__builtin_expect(*ctx->data, ' ')) {
         jiffy_parser_skip_one_byte(ctx);
         const char c = *ctx->data;
-        bool is_non_wsp = c != ' ' && c != '\n' && c != '\t' && c != '\r';
+        bool is_non_wsp = !is_char_wsp_table[(uint8_t)c];
         if (__builtin_expect(is_non_wsp, true))
             return;
 
@@ -269,7 +259,7 @@ static void skip_wsp_expect_nl_and_spaces(struct jiffy_parser *ctx) {
             jiffy_parser_skip_one_byte(ctx);
 
         const char c = *ctx->data;
-        bool is_non_wsp = c != ' ' && c != '\n' && c != '\t' && c != '\r';
+        bool is_non_wsp = !is_char_wsp_table[(uint8_t)c];
         if (__builtin_expect(is_non_wsp, true))
             return;
 
@@ -451,7 +441,6 @@ static json_res_t json_array_parse(struct jiffy_json_value *val, struct jiffy_pa
         }
 
         skip_wsp(ctx);
-        EXPECT_NOT_END(ctx);
         if (ctx->data[0] == ']') {
             val->value_type = JVT_ARRAY;
             val->arr = flush_values_cache(ctx);
@@ -519,8 +508,6 @@ static json_res_t json_string_parse_value(struct jiffy_json_value *val, struct j
 }
 
 static json_res_t json_value_parse(struct jiffy_json_value *val, struct jiffy_parser *ctx) {
-    EXPECT_NOT_END(ctx);
-
     typedef json_res_t (*json_value_parser_t)(struct jiffy_json_value *val, struct jiffy_parser *ctx);
 
     static const json_value_parser_t handlers[1 << CHAR_BIT] = {

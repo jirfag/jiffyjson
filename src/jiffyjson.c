@@ -472,16 +472,20 @@ static json_res_t json_number_parse(struct jiffy_json_value *val, struct jiffy_p
 
 static json_res_t json_bool_parse(struct jiffy_json_value *val, struct jiffy_parser *ctx) {
     val->value_type = JVT_BOOL;
-    if (ctx->data_size >= STRLN("true") && *(uint32_t *)(ctx->data) == *(uint32_t *)"true") {
-        jiffy_parser_skip_n_bytes(ctx, STRLN("true"));
-        val->bool_val = true;
-        return JSON_OK;
-    }
+    if (ctx->data_size >= STRLN("true")) {
+        if (*(uint32_t *)(ctx->data) == *(uint32_t *)"true") {
+            jiffy_parser_skip_n_bytes(ctx, STRLN("true"));
+            val->bool_val = true;
+            return JSON_OK;
+        }
 
-    if (ctx->data_size >= STRLN("false") && *(uint32_t *)(ctx->data) == *(uint32_t *)"fals" && ctx->data[4] == 'e') {
-        jiffy_parser_skip_n_bytes(ctx, STRLN("false"));
-        val->bool_val = false;
-        return JSON_OK;
+        if (*(uint32_t *)(ctx->data) == *(uint32_t *)"fals") {
+            if (ctx->data[4] == 'e') {
+                jiffy_parser_skip_n_bytes(ctx, STRLN("false"));
+                val->bool_val = false;
+                return JSON_OK;
+            }
+        }
     }
 
     // TODO: case-insensitive

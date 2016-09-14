@@ -27,7 +27,10 @@ struct region_allocator {
 };
 
 struct region_allocator *region_allocator_create() {
-    return calloc(1, sizeof(struct region_allocator));
+    struct region_allocator *ra = calloc(1, sizeof(struct region_allocator));
+    jvector_ensure(&ra->areas, 8);
+
+    return ra;
 }
 
 static struct mem_area *region_allocator_add_mem_impl(struct region_allocator *ra, void *buf, size_t size, mem_area_free_t dtor) {

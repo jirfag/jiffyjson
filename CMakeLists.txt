@@ -2,7 +2,7 @@ project (jiffyjson)
 cmake_minimum_required(VERSION 2.8)
 
 file(GLOB LIB_SOURCES src/*.c)
-set(COMMON_FLAGS "-g -Ofast -march=native -DNDEBUG -Wall")
+set(COMMON_FLAGS "-g -Ofast -march=native -DNDEBUG -Wall -DJIFFY_MEMCHR_SSE2")
 
 if (${PERF_TESTING})
     set(COMMON_FLAGS "${COMMON_FLAGS} -fno-inline -fno-omit-frame-pointer")

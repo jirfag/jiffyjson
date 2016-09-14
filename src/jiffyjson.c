@@ -13,6 +13,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef __SSE2__
+#define JIFFY_MEMCHR_SSE2 1
+#endif
+
+#ifdef JIFFY_MEMCHR_SSE2
+#include <xmmintrin.h>
+#define bsf(x) __builtin_ctz(x)
+#endif
+
 #define PACKED __attribute__((packed))
 #define FORCE_INLINE __attribute__((always_inline)) inline
 #define HOT __attribute__((hot))
@@ -82,6 +91,51 @@ struct jiffy_parser {
 struct jiffy_parser *jiffy_parser_create() {
     return calloc(1, sizeof(struct jiffy_parser));
 }
+
+#ifdef JIFFY_MEMCHR_SSE2
+static void *memchrSSE2(const char *p, int c, size_t len)
+{
+    if (len >= 16) {
+        __m128i c16 = _mm_set1_epi8(c);
+        /* 16 byte alignment */
+        size_t ip = (size_t)p;
+        size_t n = ip & 15;
+        if (n > 0) {
+            ip &= ~15;
+            __m128i x = *(const __m128i*)ip;
+            __m128i a = _mm_cmpeq_epi8(x, c16);
+            unsigned long mask = _mm_movemask_epi8(a);
+            mask &= 0xffffffffUL << n;
+            if (mask) {
+                return (void*)(ip + bsf(mask));
+            }
+            n = 16 - n;
+            len -= n;
+            p += n;
+        }
+        while (len >= 32) {
+            __m128i x = *(const __m128i*)&p[0];
+            __m128i y = *(const __m128i*)&p[16];
+            __m128i a = _mm_cmpeq_epi8(x, c16);
+            __m128i b = _mm_cmpeq_epi8(y, c16);
+            unsigned long mask = (_mm_movemask_epi8(b) << 16) | _mm_movemask_epi8(a);
+            if (mask) {
+                return (void*)(p + bsf(mask));
+            }
+            len -= 32;
+            p += 32;
+        }
+    }
+    while (len > 0) {
+        if (*p == c) return (void*)p;
+        p++;
+        len--;
+    }
+    return 0;
+}
+
+#define memchr memchrSSE2
+#endif
 
 void jiffy_parser_set_input(struct jiffy_parser *parser, const char *data, uint32_t data_size) {
     parser->data = data;

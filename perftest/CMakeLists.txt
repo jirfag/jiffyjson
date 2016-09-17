@@ -15,4 +15,4 @@ include_directories(
 )
 
 add_executable(bench ${BENCH_SOURCES})
-target_link_libraries(bench -flto jiffyjson yajl)
+target_link_libraries(bench jiffyjson yajl)

@@ -1,4 +1,4 @@
-set(CMAKE_CXX_FLAGS "${COMMON_FLAGS} -DUNITTEST")
+set(CMAKE_CXX_FLAGS "${COMMON_FLAGS}")
 
 set(UNITTEST_SOURCES
     main.cpp
@@ -7,4 +7,4 @@ set(UNITTEST_SOURCES
 include_directories(../include)
 
 add_executable(unittest ${UNITTEST_SOURCES})
-target_link_libraries(unittest -flto jiffyjson gtest pthread)
+target_link_libraries(unittest jiffyjson gtest pthread)

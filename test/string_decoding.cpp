@@ -22,6 +22,7 @@ TEST(StringDecoding, EscapeControlCharacters) {
     TEST_STRING_DECODING("\\r", "\r");
     TEST_STRING_DECODING("\\t", "\t");
     TEST_STRING_DECODING("\\\\", "\\");
+    TEST_STRING_DECODING("\\\\\\\"", "\\\"");
     TEST_STRING_DECODING("\\\"", "\"");
     TEST_STRING_DECODING("\\/", "/");
 }

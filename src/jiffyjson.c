@@ -108,7 +108,8 @@ static FORCE_INLINE void jiffy_parser_skip_n_bytes(struct jiffy_parser *ctx, uin
     bool is_error_ = (ctx_)->data[0] != ch_; \
     if (__builtin_expect(is_error_, false) == true) { \
         printf("expected '%c', got '%c'\n", ch_, (ctx_)->data_size ? (ctx_)->data[0] : '\0'); \
-        return JSON_ERROR; \
+\
+        return format_error(ctx_, "unexpected character"); \
     } \
     jiffy_parser_skip_one_byte((ctx_)); \
 })
@@ -174,7 +175,7 @@ static void skip_wsp(struct jiffy_parser *ctx) {
 }
 
 static void skip_wsp_expect_one_space(struct jiffy_parser *ctx) {
-    if (__builtin_expect(*ctx->data, ' ')) {
+    if (__builtin_expect(*ctx->data == ' ', true)) {
         jiffy_parser_skip_one_byte(ctx);
         const char c = *ctx->data;
         bool is_non_wsp = !is_char_wsp_table[(uint8_t)c];
@@ -188,7 +189,7 @@ static void skip_wsp_expect_one_space(struct jiffy_parser *ctx) {
 }
 
 static void skip_wsp_expect_nl_and_spaces(struct jiffy_parser *ctx) {
-    if (__builtin_expect(*ctx->data, '\n')) {
+    if (__builtin_expect(*ctx->data == '\n', true)) {
         jiffy_parser_skip_one_byte(ctx);
 
         const uint32_t spaces4 = *(uint32_t *)"    ";

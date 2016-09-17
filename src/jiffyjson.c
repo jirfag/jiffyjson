@@ -1,5 +1,6 @@
 #include "jiffyjson.h"
 #include "region_allocator.h"
+#include "one_mmap_allocator.h"
 #include "internal.h"
 
 #include <assert.h>
@@ -25,6 +26,14 @@
 
 struct jiffy_parser *jiffy_parser_create() {
     return calloc(1, sizeof(struct jiffy_parser));
+}
+
+void jiffy_parser_destroy(struct jiffy_parser *ctx) {
+    ctx->large_allocator.destroy(ctx->large_allocator.ctx);
+    ctx->small_allocator.destroy(ctx->small_allocator.ctx);
+    jvector_delete(&ctx->kv_cache);
+    jvector_delete(&ctx->values_cache);
+    free(ctx);
 }
 
 #ifdef JIFFY_MEMCHR_SSE2
@@ -87,6 +96,13 @@ void jiffy_parser_set_small_allocator(struct jiffy_parser *parser,
     parser->small_allocator.alloc = alloc;
     parser->small_allocator.destroy = destroy;
     parser->small_allocator.ctx = ctx;
+}
+
+void jiffy_parser_set_large_allocator(struct jiffy_parser *parser,
+        jiffy_json_alloc_func_t alloc, jiffy_json_destroy_func_t destroy, void *ctx) {
+    parser->large_allocator.alloc = alloc;
+    parser->large_allocator.destroy = destroy;
+    parser->large_allocator.ctx = ctx;
 }
 
 static FORCE_INLINE void jiffy_parser_skip_one_byte(struct jiffy_parser *ctx) {
@@ -274,8 +290,12 @@ static json_res_t json_string_process_backslash(struct json_string *str, struct 
     return JSON_OK;
 }
 
+static FORCE_INLINE void *large_chunk_alloc(struct jiffy_parser *ctx, uint32_t size) {
+    return ctx->large_allocator.alloc(ctx->large_allocator.ctx, size);
+}
+
 static json_res_t json_string_parse_with_known_max_len(struct json_string *str, struct jiffy_parser *ctx, uint32_t len) {
-    str->data = (char *)malloc(len);
+    str->data = (char *)large_chunk_alloc(ctx, len);
     assert(str->data);
     str->size = 0;
     const char *str_end = ctx->data + len;
@@ -585,11 +605,17 @@ static json_res_t json_parse_impl(struct jiffy_json_value *val, struct jiffy_par
 STATIC void jiffy_parser_init(struct jiffy_parser *parser) {
     if (!parser->small_allocator.alloc) {
         struct region_allocator *ra = region_allocator_create();
-        parser->small_allocator = (struct json_allocator) {
-            .alloc = (jiffy_json_alloc_func_t)region_allocator_alloc,
-            .destroy = (jiffy_json_destroy_func_t)region_allocator_destroy,
-            .ctx = ra,
-        };
+        jiffy_parser_set_small_allocator(parser,
+                (jiffy_json_alloc_func_t)region_allocator_alloc,
+                (jiffy_json_destroy_func_t)region_allocator_destroy,
+                ra);
+    }
+    if (!parser->large_allocator.alloc) {
+        struct one_mmap_allocator *oma = one_mmap_allocator_create(parser->data_size);
+        jiffy_parser_set_large_allocator(parser,
+                (jiffy_json_alloc_func_t)one_mmap_allocator_alloc,
+                (jiffy_json_destroy_func_t)one_mmap_allocator_destroy,
+                oma);
     }
     jvector_ensure(&parser->kv_cache, 64);
     jvector_ensure(&parser->values_cache, 64);

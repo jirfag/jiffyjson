@@ -2,7 +2,11 @@
 #include "jiffyjson.h"
 #include "internal.h"
 
-#define TEST_STRING_DECODING(s_, exp_) TEST_STRING_DECODING_("\"" + std::string(s_) + "\"}", std::string(exp_))
+#define TEST_STRING_DECODING(s_, exp_) ({ \
+    const std::string quoted_s_("\"" + std::string(s_) + "\"}"); \
+    const std::string exp_std_string_(exp_); \
+    TEST_STRING_DECODING_(quoted_s_, exp_std_string_); \
+})
 
 #define TEST_STRING_DECODING_(s_, exp_) ({ \
     struct jiffy_parser *parser_ = jiffy_parser_create(); \
@@ -12,10 +16,12 @@
     json_res_t res_ = json_string_parse(&str_, parser_); \
     ASSERT_EQ(JSON_OK, res_) << s_ << " -> " << exp_ << ": " << jiffy_parser_get_error(parser_); \
     ASSERT_EQ(exp_, std::string(str_.data, str_.size)); \
+    jiffy_parser_destroy(parser_); \
 })
 
 TEST(StringDecoding, EscapeControlCharacters) {
     TEST_STRING_DECODING("a", "a");
+
     TEST_STRING_DECODING("\\b", "\b");
     TEST_STRING_DECODING("\\f", "\f");
     TEST_STRING_DECODING("\\n", "\n");

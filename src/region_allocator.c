@@ -51,9 +51,10 @@ void region_allocator_add_mem(struct region_allocator *ra, void *buf, size_t siz
         ra->cur_area = area;
 }
 
-void *region_allocator_alloc(struct region_allocator *ra, size_t size) {
+const size_t new_area_size = 16384;
+
+void *region_allocator_alloc(struct region_allocator *ra, uint32_t size) {
 //    printf("small allocof %zu bytes\n", size);
-    const size_t new_area_size = 16384;
     assert(size <= new_area_size);
     struct mem_area *cur_area = ra->cur_area;
     if (!cur_area || cur_area->cur_size < size) {
@@ -71,7 +72,11 @@ void *region_allocator_alloc(struct region_allocator *ra, size_t size) {
 
 void region_allocator_destroy(struct region_allocator *ra) {
     for (size_t i = 0; i < jvector_size(&ra->areas); ++i) {
-        // TODO
+        int r = munmap(jvector_get_val(&ra->areas, i), new_area_size);
+        if (r != 0)
+            abort();
     }
+    jvector_delete(&ra->areas);
+    free(ra);
 }
 

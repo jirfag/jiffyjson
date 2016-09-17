@@ -27,8 +27,8 @@ option(TEST "build unittests" OFF)
 if(TEST)
     set(COMMON_FLAGS "${COMMON_FLAGS} -DUNITTEST")
     add_subdirectory(test)
+    include(CTest)
 endif(TEST)
-
 
 set(CMAKE_C_FLAGS "${COMMON_FLAGS} -std=gnu11")
 include_directories(include)

@@ -3,6 +3,7 @@
 
 #include "jvector.h"
 #include "immutable_jvector.h"
+#include "jiffyjson.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -69,6 +70,7 @@ struct jiffy_parser {
     jvector(json_kv) kv_cache;
 
     struct json_allocator small_allocator;
+    struct json_allocator large_allocator;
 
     const char *error;
 };
@@ -87,3 +89,11 @@ json_res_t json_string_parse(struct json_string *str, struct jiffy_parser *ctx);
 #else
 #define STATIC static
 #endif
+
+#define JIFFY_ASSERT(cond_) ({ \
+    if (!(cond_)) { \
+        __attribute__((unused)) \
+        volatile const char *s_ = #cond_; \
+        abort(); \
+    } \
+})

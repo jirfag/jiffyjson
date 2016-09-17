@@ -1,13 +1,11 @@
-#include "jvector.h"
-#include "immutable_jvector.h"
 #include "jiffyjson.h"
 #include "region_allocator.h"
+#include "internal.h"
 
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-#include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -22,71 +20,8 @@
 #define bsf(x) __builtin_ctz(x)
 #endif
 
-#define PACKED __attribute__((packed))
 #define FORCE_INLINE __attribute__((always_inline)) inline
 #define HOT __attribute__((hot))
-
-struct json_string {
-    char *data;
-    uint32_t size;
-} PACKED;
-
-enum json_value_type {
-    JVT_ARRAY,
-    JVT_OBJECT,
-    JVT_BOOL,
-    JVT_NUMBER,
-    JVT_STRING,
-    JVT_NULL,
-};
-
-ijvector(json_value);
-ijvector(json_kv);
-
-struct jiffy_json_value {
-    union {
-        ijvector(json_value) *arr;
-        ijvector(json_kv) *obj;
-        bool bool_val;
-        double num_val;
-        struct json_string *string;
-    };
-    uint8_t value_type;
-} PACKED;
-
-struct json_kv {
-    struct json_string k;
-    struct jiffy_json_value v;
-} PACKED;
-
-ijvector_def(json_value, struct jiffy_json_value);
-ijvector_def(json_kv, struct json_kv);
-
-typedef enum
-{
-    JSON_OK = 1,
-    JSON_ERROR = 0
-} json_res_t;
-
-jvector_def(json_value, struct jiffy_json_value);
-jvector_def(json_kv, struct json_kv);
-
-struct json_allocator {
-    jiffy_json_alloc_func_t alloc;
-    jiffy_json_destroy_func_t destroy;
-    void *ctx;
-};
-
-struct jiffy_parser {
-    const char *data;
-    uint32_t data_size;
-    const char *next_backslash;
-
-    jvector(json_value) values_cache;
-    jvector(json_kv) kv_cache;
-
-    struct json_allocator small_allocator;
-};
 
 struct jiffy_parser *jiffy_parser_create() {
     return calloc(1, sizeof(struct jiffy_parser));
@@ -136,6 +71,11 @@ static void *memchrSSE2(const char *p, int c, size_t len)
 
 #define memchr memchrSSE2
 #endif
+
+static json_res_t format_error(struct jiffy_parser *parser, const char *fmt) {
+    parser->error = fmt;
+    return JSON_ERROR;
+}
 
 void jiffy_parser_set_input(struct jiffy_parser *parser, const char *data, uint32_t data_size) {
     parser->data = data;
@@ -303,6 +243,36 @@ static void json_string_append_norealloc(struct json_string *str, const char *da
     str->size += size;
 }
 
+static json_res_t json_string_process_unicode(struct json_string *str, struct jiffy_parser *ctx) {
+    return JSON_OK; // TODO
+}
+
+static json_res_t json_string_process_backslash(struct json_string *str, struct jiffy_parser *ctx) {
+    if (ctx->data[0] == 'u') {
+        jiffy_parser_skip_one_byte(ctx);
+        return json_string_process_unicode(str, ctx);
+    }
+
+    static const char escaping_table[1 << CHAR_BIT] = {
+        ['"'] = '"',
+        ['\\'] = '\\',
+        ['/'] = '/',
+        ['b'] = '\b',
+        ['f'] = '\f',
+        ['n'] = '\n',
+        ['r'] = '\r',
+        ['t'] = '\t',
+    };
+
+    char res_ch = escaping_table[(uint8_t)ctx->data[0]];
+    if (res_ch == '\0')
+        return JSON_ERROR;
+
+    jiffy_parser_skip_one_byte(ctx);
+    str->data[str->size++] = res_ch;
+    return JSON_OK;
+}
+
 static json_res_t json_string_parse_with_known_max_len(struct json_string *str, struct jiffy_parser *ctx, uint32_t len) {
     str->data = (char *)malloc(len);
     assert(str->data);
@@ -313,9 +283,10 @@ static json_res_t json_string_parse_with_known_max_len(struct json_string *str, 
         const char *backslash = get_next_backslash(ctx);
         if (backslash > str_end) { // copy until string end
             uint32_t bytes_to_copy = str_end - ctx->data;
-            assert(bytes_to_copy);
-            json_string_append_norealloc(str, ctx->data, bytes_to_copy);
-            jiffy_parser_skip_n_bytes(ctx, bytes_to_copy);
+            if (bytes_to_copy) {
+                json_string_append_norealloc(str, ctx->data, bytes_to_copy);
+                jiffy_parser_skip_n_bytes(ctx, bytes_to_copy);
+            }
             ASSERT_CH('"', ctx);
             return JSON_OK;
         }
@@ -327,7 +298,8 @@ static json_res_t json_string_parse_with_known_max_len(struct json_string *str, 
         }
 
         ASSERT_CH('\\', ctx);
-        jiffy_parser_skip_one_byte(ctx); // just skip next byte, TODO
+        if (json_string_process_backslash(str, ctx) != JSON_OK)
+            return format_error(ctx, "invalid escape sequence");
     }
 }
 
@@ -338,22 +310,26 @@ static const char *json_string_get_end(const char *str, uint32_t str_size) {
             return NULL;
 
         if (closing_quote_pos[-1] == '\\') {
-            uint32_t diff = closing_quote_pos - str + 1;
-            str += diff;
-            str_size -= diff;
-            continue;
+            int i;
+            for (i = 2; closing_quote_pos[-i] == '\\'; ++i) {}
+            if (i % 2 == 0) {
+                uint32_t diff = closing_quote_pos - str + 1;
+                str += diff;
+                str_size -= diff;
+                continue;
+            }
         }
 
         return closing_quote_pos;
     }
 }
 
-static HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_parser *ctx) {
+STATIC HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_parser *ctx) {
     EXPECT_CH('"', ctx);
 
     const char *closing_quote_pos = memchr(ctx->data, '"', ctx->data_size);
     if (!closing_quote_pos)
-        return JSON_ERROR;
+        return format_error(ctx, "no ending quote");
 
     uint32_t size = closing_quote_pos - ctx->data;
     if (size == 0) { // optimized path for empty string
@@ -364,9 +340,9 @@ static HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_pa
     }
 
     if (closing_quote_pos[-1] == '\\') {
-        const char *json_string_end = json_string_get_end(closing_quote_pos + STRLN("\""), ctx->data_size - size - STRLN("\""));
+        const char *json_string_end = json_string_get_end(closing_quote_pos, ctx->data_size - size);
         if (!json_string_end)
-            return JSON_ERROR;
+            return format_error(ctx, "no string end");
         return json_string_parse_with_known_max_len(str, ctx, json_string_end - ctx->data);
     }
 
@@ -605,7 +581,7 @@ static json_res_t json_parse_impl(struct jiffy_json_value *val, struct jiffy_par
     return r;
 }
 
-struct jiffy_json_value *jiffy_parser_parse(struct jiffy_parser *parser) {
+STATIC void jiffy_parser_init(struct jiffy_parser *parser) {
     if (!parser->small_allocator.alloc) {
         struct region_allocator *ra = region_allocator_create();
         parser->small_allocator = (struct json_allocator) {
@@ -616,6 +592,10 @@ struct jiffy_json_value *jiffy_parser_parse(struct jiffy_parser *parser) {
     }
     jvector_ensure(&parser->kv_cache, 64);
     jvector_ensure(&parser->values_cache, 64);
+}
+
+struct jiffy_json_value *jiffy_parser_parse(struct jiffy_parser *parser) {
+    jiffy_parser_init(parser);
     struct jiffy_json_value *val = small_object_alloc(parser, sizeof(*val));
     json_res_t r = json_parse_impl(val, parser);
 #define MIN(a_, b_) (a_ < b_ ? a_ : b_)
@@ -625,4 +605,8 @@ struct jiffy_json_value *jiffy_parser_parse(struct jiffy_parser *parser) {
     }
 
     return val;
+}
+
+const char *jiffy_parser_get_error(const struct jiffy_parser *parser) {
+    return parser->error;
 }

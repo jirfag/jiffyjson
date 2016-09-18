@@ -18,7 +18,7 @@ $ ./perftest/bench ../perftest/twitter.json
 Lightweigth
 -------
 
-Only 2 source files.
+Only 3 small source files, written in simple C with <1000 lines of code.
 
 Easy to use
 -------

@@ -63,8 +63,8 @@ struct json_allocator {
 
 struct jiffy_parser {
     const char *data;
-    uint32_t data_size;
     const char *next_backslash;
+    uint32_t data_size;
 
     jvector(json_value) values_cache;
     jvector(json_kv) kv_cache;
@@ -72,7 +72,7 @@ struct jiffy_parser {
     struct json_allocator small_allocator;
     struct json_allocator large_allocator;
 
-    const char *error;
+    char error[256];
 };
 
 #ifdef UNITTEST

@@ -19,9 +19,34 @@
     jiffy_parser_destroy(parser_); \
 })
 
-TEST(StringDecoding, EscapeControlCharacters) {
-    TEST_STRING_DECODING("a", "a");
+#define EXPECT_STRING_DECODING_ERROR_(s_, exp_err_) ({ \
+    struct jiffy_parser *parser_ = jiffy_parser_create(); \
+    jiffy_parser_set_input(parser_, (s_).c_str(), (s_).size()); \
+    jiffy_parser_init(parser_); \
+    struct json_string str_; \
+    json_res_t res_ = json_string_parse(&str_, parser_); \
+    ASSERT_EQ(JSON_ERROR, res_); \
+    const std::string err_(jiffy_parser_get_error(parser_)); \
+    ASSERT_EQ(0, err_.find(exp_err_)) << err_; \
+    jiffy_parser_destroy(parser_); \
+})
+#define EXPECT_STRING_DECODING_ERROR(s_, exp_err_) ({ \
+    std::string s_with_brace_(s_); \
+    s_with_brace_ += "}"; \
+    EXPECT_STRING_DECODING_ERROR_(s_with_brace_, exp_err_); \
+})
 
+TEST(StringDecoding, Simple) {
+    TEST_STRING_DECODING("a", "a");
+    TEST_STRING_DECODING("", "");
+}
+
+TEST(StringDecoding, LongString) {
+    const std::string long_str(100000, 'a');
+    TEST_STRING_DECODING(long_str, long_str);
+}
+
+TEST(StringDecoding, EscapeControlCharacters) {
     TEST_STRING_DECODING("\\b", "\b");
     TEST_STRING_DECODING("\\f", "\f");
     TEST_STRING_DECODING("\\n", "\n");
@@ -31,4 +56,11 @@ TEST(StringDecoding, EscapeControlCharacters) {
     TEST_STRING_DECODING("\\\\\\\"", "\\\"");
     TEST_STRING_DECODING("\\\"", "\"");
     TEST_STRING_DECODING("\\/", "/");
+}
+
+TEST(StringDecoding, Errors) {
+    EXPECT_STRING_DECODING_ERROR("", "expected '\"', got '}'");
+    EXPECT_STRING_DECODING_ERROR("\"", "no ending quote for string");
+    EXPECT_STRING_DECODING_ERROR("\"\\\"", "no non-escaped ending quote for string");
+    EXPECT_STRING_DECODING_ERROR("\"\\e\"", "invalid escape sequence");
 }

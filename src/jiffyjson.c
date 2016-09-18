@@ -4,6 +4,7 @@
 #include "internal.h"
 
 #include <assert.h>
+#include <stdarg.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -81,8 +82,17 @@ static void *memchrSSE2(const char *p, int c, size_t len)
 #define memchr memchrSSE2
 #endif
 
-static json_res_t format_error(struct jiffy_parser *parser, const char *fmt) {
-    parser->error = fmt;
+static json_res_t format_error(struct jiffy_parser *parser, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(parser->error, sizeof(parser->error), fmt, ap);
+    va_end(ap);
+    if (n <= 0 || n >= sizeof(parser->error))
+        return JSON_ERROR;
+
+#define MIN(a_, b_) ((a_) < (b_) ? (a_) : (b_))
+    snprintf(parser->error + n, sizeof(parser->error) - n, ", pos: '%.*s",
+             MIN(parser->data_size, 20), parser->data);
     return JSON_ERROR;
 }
 
@@ -122,11 +132,8 @@ static FORCE_INLINE void jiffy_parser_skip_n_bytes(struct jiffy_parser *ctx, uin
 // XXX: don't check data_size because it was checked once at the start: data ends with '}'
 #define EXPECT_CH(ch_, ctx_) ({ \
     bool is_error_ = (ctx_)->data[0] != ch_; \
-    if (__builtin_expect(is_error_, false) == true) { \
-        printf("expected '%c', got '%c'\n", ch_, (ctx_)->data_size ? (ctx_)->data[0] : '\0'); \
-\
-        return format_error(ctx_, "unexpected character"); \
-    } \
+    if (__builtin_expect(is_error_, false) == true) \
+        return format_error(ctx_, "expected '%c', got '%c'", ch_, (ctx_)->data[0]); \
     jiffy_parser_skip_one_byte((ctx_)); \
 })
 
@@ -350,7 +357,7 @@ STATIC HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_pa
 
     const char *closing_quote_pos = memchr(ctx->data, '"', ctx->data_size);
     if (!closing_quote_pos)
-        return format_error(ctx, "no ending quote");
+        return format_error(ctx, "no ending quote for string");
 
     uint32_t size = closing_quote_pos - ctx->data;
     if (size == 0) { // optimized path for empty string
@@ -363,7 +370,7 @@ STATIC HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_pa
     if (closing_quote_pos[-1] == '\\') {
         const char *json_string_end = json_string_get_end(closing_quote_pos, ctx->data_size - size);
         if (!json_string_end)
-            return format_error(ctx, "no string end");
+            return format_error(ctx, "no non-escaped ending quote for string");
         return json_string_parse_with_known_max_len(str, ctx, json_string_end - ctx->data);
     }
 
@@ -625,7 +632,6 @@ struct jiffy_json_value *jiffy_parser_parse(struct jiffy_parser *parser) {
     jiffy_parser_init(parser);
     struct jiffy_json_value *val = small_object_alloc(parser, sizeof(*val));
     json_res_t r = json_parse_impl(val, parser);
-#define MIN(a_, b_) (a_ < b_ ? a_ : b_)
     if (r != JSON_OK) {
         printf("invalid json found at pos '%.*s'\n", (int)(MIN(30, parser->data_size)), parser->data);
         return NULL;
@@ -636,4 +642,20 @@ struct jiffy_json_value *jiffy_parser_parse(struct jiffy_parser *parser) {
 
 const char *jiffy_parser_get_error(const struct jiffy_parser *parser) {
     return parser->error;
+}
+
+bool jiffy_json_value_is_string(const struct jiffy_json_value *v) {
+    return v->value_type == JVT_STRING;
+}
+bool jiffy_json_value_is_boolean(const struct jiffy_json_value *v) {
+    return v->value_type == JVT_BOOL;
+}
+bool jiffy_json_value_is_null(const struct jiffy_json_value *v) {
+    return v->value_type == JVT_NULL;
+}
+bool jiffy_json_value_is_array(const struct jiffy_json_value *v) {
+    return v->value_type == JVT_ARRAY;
+}
+bool jiffy_json_value_is_object(const struct jiffy_json_value *v) {
+    return v->value_type == JVT_OBJECT;
 }

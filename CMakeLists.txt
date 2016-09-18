@@ -15,6 +15,8 @@ if(PERFTEST)
 else(PERFTEST)
     if(NOT DEBUG)
         set(COMMON_FLAGS "${COMMON_FLAGS} -flto")
+        set(CMAKE_AR "gcc-ar")
+        set(CMAKE_RANLIB "gcc-ranlib")
     endif(NOT DEBUG)
 endif(PERFTEST)
 

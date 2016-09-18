@@ -25,6 +25,10 @@ bool jiffy_json_value_is_null(const struct jiffy_json_value *v);
 bool jiffy_json_value_is_array(const struct jiffy_json_value *v);
 bool jiffy_json_value_is_object(const struct jiffy_json_value *v);
 
+uint32_t jiffy_json_object_get_size(const struct jiffy_json_value *v);
+uint32_t jiffy_json_array_get_size(const struct jiffy_json_value *v);
+struct jiffy_json_value *jiffy_json_object_get_value(const struct jiffy_json_value *obj, const char *key);
+
 #ifdef __cplusplus
 }
 #endif

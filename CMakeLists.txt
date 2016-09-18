@@ -32,7 +32,7 @@ if(TEST)
     include(CTest)
 endif(TEST)
 
-set(CMAKE_C_FLAGS "${COMMON_FLAGS} -std=gnu11")
+set(CMAKE_C_FLAGS "${COMMON_FLAGS} -std=gnu11 -Werror -Wextra")
 include_directories(include)
 add_library(jiffyjson ${LIB_SOURCES})
 

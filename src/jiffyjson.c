@@ -87,7 +87,7 @@ static json_res_t format_error(struct jiffy_parser *parser, const char *fmt, ...
     va_start(ap, fmt);
     int n = vsnprintf(parser->error, sizeof(parser->error), fmt, ap);
     va_end(ap);
-    if (n <= 0 || n >= sizeof(parser->error))
+    if (n <= 0 || n >= (int)sizeof(parser->error))
         return JSON_ERROR;
 
 #define MIN(a_, b_) ((a_) < (b_) ? (a_) : (b_))
@@ -304,7 +304,7 @@ static FORCE_INLINE int hex2int(char c) {
     return hext2int_table[(uint8_t)c];
 }
 
-static FORCE_INLINE json_res_t decode_unicode_codepoint(struct json_string *str, struct jiffy_parser *ctx, uint32_t *codepoint) {
+static FORCE_INLINE json_res_t decode_unicode_codepoint(struct jiffy_parser *ctx, uint32_t *codepoint) {
     int h1 = hex2int(ctx->data[0]);
     if (h1 < 0)
         return format_error(ctx, "invalid unicode 0-th hex");
@@ -324,7 +324,7 @@ static FORCE_INLINE json_res_t decode_unicode_codepoint(struct json_string *str,
 
 static json_res_t json_string_process_unicode(struct json_string *str, struct jiffy_parser *ctx) {
     uint32_t codepoint;
-    if (decode_unicode_codepoint(str, ctx, &codepoint) != JSON_OK)
+    if (decode_unicode_codepoint(ctx, &codepoint) != JSON_OK)
         return JSON_ERROR;
 
     if (codepoint < 0x80) {
@@ -355,7 +355,7 @@ static json_res_t json_string_process_unicode(struct json_string *str, struct ji
     EXPECT_CH('u', ctx);
 
     uint32_t trail;
-    if (decode_unicode_codepoint(str, ctx, &trail) != JSON_OK)
+    if (decode_unicode_codepoint(ctx, &trail) != JSON_OK)
         return JSON_ERROR;
 
     if (trail < 0xDC00 || trail > 0xDFFF) /* valid trail surrogate? (0xDC00..0xDFFF) */
@@ -511,7 +511,7 @@ static FORCE_INLINE void *small_object_alloc(struct jiffy_parser *ctx, uint32_t 
 static ijvector(json_value) *flush_values_cache(struct jiffy_parser *ctx) {
     uint32_t elems_n = jvector_size(&ctx->values_cache);
     struct jiffy_json_value *elems = (struct jiffy_json_value *)jvector_data(&ctx->values_cache);
-    ijvector(json_value) *ret = ijvector_init(json_value, elems, elems_n);
+    ijvector(json_value) *ret = ijvector_init(json_value, elems, elems_n, ctx->small_allocator.alloc, ctx->small_allocator.ctx);
     jvector_reset(&ctx->values_cache);
     return ret;
 }
@@ -519,7 +519,7 @@ static ijvector(json_value) *flush_values_cache(struct jiffy_parser *ctx) {
 static void flush_kv_cache(struct jiffy_json_value *val, struct jiffy_parser *ctx) {
     uint32_t elems_n = jvector_size(&ctx->kv_cache);
     struct json_kv *elems = (struct json_kv *)jvector_data(&ctx->kv_cache);
-    val->obj = ijvector_init(json_kv, elems, elems_n);
+    val->obj = ijvector_init(json_kv, elems, elems_n,  ctx->small_allocator.alloc, ctx->small_allocator.ctx);
     jvector_reset(&ctx->kv_cache);
 }
 
@@ -532,11 +532,10 @@ static json_res_t json_array_parse(struct jiffy_json_value *val, struct jiffy_pa
     skip_wsp_expect_nl_and_spaces(ctx);
 
     for (;;) {
-        struct jiffy_json_value *val = jvector_push_back(&ctx->values_cache);
-        json_res_t r = json_value_parse(val, ctx);
+        struct jiffy_json_value *inner_val = jvector_push_back(&ctx->values_cache);
+        json_res_t r = json_value_parse(inner_val, ctx);
         if (r != JSON_OK)
             return r;
-
 
         if (is_current_char_eq(ctx, ',')) {
             jiffy_parser_skip_one_byte(ctx);
@@ -652,6 +651,11 @@ static json_res_t json_object_parse(struct jiffy_json_value *val, struct jiffy_p
     json_object_init(val);
     EXPECT_CH('{', ctx);
     skip_wsp_expect_nl_and_spaces(ctx);
+    if (ctx->data[0] == '}') {
+        //TODO: check if depth != 0 and data_size == 0: return JSON_ERROR to prevent heap overread
+        jiffy_parser_skip_one_byte(ctx);
+        return JSON_OK;
+    }
 
     for (;;) {
         struct json_kv *kv = jvector_push_back(&ctx->kv_cache);
@@ -758,4 +762,31 @@ bool jiffy_json_value_is_array(const struct jiffy_json_value *v) {
 }
 bool jiffy_json_value_is_object(const struct jiffy_json_value *v) {
     return v->value_type == JVT_OBJECT;
+}
+uint32_t jiffy_json_object_get_size(const struct jiffy_json_value *v) {
+    JIFFY_ASSERT(v->value_type == JVT_OBJECT);
+    if (!v->obj)
+        return 0;
+    return ijvector_size(v->obj);
+}
+uint32_t jiffy_json_array_get_size(const struct jiffy_json_value *v) {
+    JIFFY_ASSERT(v->value_type == JVT_ARRAY);
+    if (!v->arr)
+        return 0;
+    return ijvector_size(v->arr);
+}
+struct jiffy_json_value *jiffy_json_object_get_value(const struct jiffy_json_value *obj, const char *key) {
+    JIFFY_ASSERT(obj->value_type == JVT_OBJECT);
+    if (!obj->obj)
+        return NULL;
+
+    size_t key_len = strlen(key);
+    for (uint32_t i = 0; i < ijvector_size(obj->obj); ++i) {
+        struct json_kv *kv = &ijvector_get_elem(obj->obj, i);
+        struct json_string *s = &kv->k;
+        if (s->size == key_len && !memcmp(s->data, key, key_len))
+            return &kv->v;
+    }
+
+    return NULL;
 }

@@ -72,9 +72,11 @@ void *region_allocator_alloc(struct region_allocator *ra, uint32_t size) {
 
 void region_allocator_destroy(struct region_allocator *ra) {
     for (size_t i = 0; i < jvector_size(&ra->areas); ++i) {
-        int r = munmap(jvector_get_val(&ra->areas, i), new_area_size);
+        struct mem_area *area = jvector_get_val(&ra->areas, i);
+        int r = munmap(area->data, area->size);
         if (r != 0)
             abort();
+        free(area);
     }
     jvector_delete(&ra->areas);
     free(ra);

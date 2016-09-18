@@ -74,6 +74,9 @@ TEST(StringDecoding, Errors) {
     EXPECT_STRING_DECODING_ERROR("\"\\u012\"", "invalid unicode 3-th hex");
     EXPECT_STRING_DECODING_ERROR("\"\\uDC00\"", "invalid unicode codepoint dc00");
     EXPECT_STRING_DECODING_ERROR("\"\\udbff\\u0123\"", "invalid trailing surrogate 0123");
+    EXPECT_STRING_DECODING_ERROR("\"\\udbff\"", "expected '\\', got '\"'");
+    EXPECT_STRING_DECODING_ERROR("\"\\udbff\\x\"", "expected 'u', got 'x'");
+    EXPECT_STRING_DECODING_ERROR("\"\\udbff\\u\"", "invalid unicode 0-th hex");
 }
 
 TEST(StringDecoding, Unicode) {

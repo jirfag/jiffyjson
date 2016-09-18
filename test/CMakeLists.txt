@@ -3,6 +3,7 @@ set(CMAKE_CXX_FLAGS "${COMMON_FLAGS}")
 set(UNITTEST_SOURCES
     main.cpp
     string_decoding.cpp
+    json_parser.cpp
 )
 include_directories(../include)
 

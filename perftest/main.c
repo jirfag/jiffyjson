@@ -32,7 +32,7 @@ static const char *read_file(size_t *size, const char *fname) {
     char *data = (char *)malloc(file_size);
     assert(data);
     int r = fread(data, 1, file_size, f);
-    assert(r == file_size);
+    assert(r == (int)file_size);
 
     *size = file_size;
     return data;

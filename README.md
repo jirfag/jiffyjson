@@ -15,7 +15,7 @@ $ ./perftest/bench ../perftest/twitter.json
 'ujson4c' took 2154mcs, speed is 293.2Mb/sec = 6.6 * etalon
 'yajl' took 6345mcs, speed is 99.5Mb/sec = 19.5 * etalon
 ```
-Lightweigth
+Lightweight
 -------
 
 Only 3 small source files, written in simple C with <1000 lines of code.

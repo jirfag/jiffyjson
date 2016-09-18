@@ -58,9 +58,27 @@ TEST(StringDecoding, EscapeControlCharacters) {
     TEST_STRING_DECODING("\\/", "/");
 }
 
+TEST(StringDecoding, EscapeControlCharactersMixed) {
+    TEST_STRING_DECODING("a\\tb\\nc", "a\tb\nc");
+}
+
 TEST(StringDecoding, Errors) {
     EXPECT_STRING_DECODING_ERROR("", "expected '\"', got '}'");
     EXPECT_STRING_DECODING_ERROR("\"", "no ending quote for string");
     EXPECT_STRING_DECODING_ERROR("\"\\\"", "no non-escaped ending quote for string");
     EXPECT_STRING_DECODING_ERROR("\"\\e\"", "invalid escape sequence");
+
+    EXPECT_STRING_DECODING_ERROR("\"\\u\"", "invalid unicode 0-th hex");
+    EXPECT_STRING_DECODING_ERROR("\"\\u0\"", "invalid unicode 1-th hex");
+    EXPECT_STRING_DECODING_ERROR("\"\\u01\"", "invalid unicode 2-th hex");
+    EXPECT_STRING_DECODING_ERROR("\"\\u012\"", "invalid unicode 3-th hex");
+    EXPECT_STRING_DECODING_ERROR("\"\\uDC00\"", "invalid unicode codepoint dc00");
+    EXPECT_STRING_DECODING_ERROR("\"\\udbff\\u0123\"", "invalid trailing surrogate 0123");
+}
+
+TEST(StringDecoding, Unicode) {
+    TEST_STRING_DECODING("\\u006a", "j");
+    TEST_STRING_DECODING("\\u0081", "\xc2\x81");
+    TEST_STRING_DECODING("\\ud7ff", "\xed\x9f\xbf");
+    TEST_STRING_DECODING("\\ud800\\udc00", "\xf0\x90\x80\x80");
 }

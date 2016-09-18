@@ -258,17 +258,117 @@ static const char *get_next_backslash(struct jiffy_parser *ctx) {
     return ctx->next_backslash;
 }
 
-static bool is_next_backslash_before(struct jiffy_parser *ctx, const char *ptr) {
+static FORCE_INLINE bool is_next_backslash_before(struct jiffy_parser *ctx, const char *ptr) {
     return get_next_backslash(ctx) < ptr;
 }
 
-static void json_string_append_norealloc(struct json_string *str, const char *data, uint32_t size) {
+static FORCE_INLINE void json_string_append_string(struct json_string *str, const char *data, uint32_t size) {
     memcpy(str->data + str->size, data, size);
     str->size += size;
 }
 
+static FORCE_INLINE void json_string_append_char(struct json_string *str, char c) {
+    str->data[str->size++] = c;
+}
+
+static FORCE_INLINE int hex2int(char c) {
+    static const int8_t hext2int_table[1 << CHAR_BIT] = {
+        [0 ... ('0' - 1)] = -1,
+        ['0'] = 0,
+        ['1'] = 1,
+        ['2'] = 2,
+        ['3'] = 3,
+        ['4'] = 4,
+        ['5'] = 5,
+        ['6'] = 6,
+        ['7'] = 7,
+        ['8'] = 8,
+        ['9'] = 9,
+        [('9' + 1) ... ('A' - 1)] = -1,
+        ['A'] = 10,
+        ['B'] = 11,
+        ['C'] = 12,
+        ['D'] = 13,
+        ['E'] = 14,
+        ['F'] = 15,
+        [('F' + 1) ... ('a' - 1)] = -1,
+        ['a'] = 10,
+        ['b'] = 11,
+        ['c'] = 12,
+        ['d'] = 13,
+        ['e'] = 14,
+        ['f'] = 15,
+        [('f' + 1) ... 0xff] = -1
+    };
+
+    return hext2int_table[(uint8_t)c];
+}
+
+static FORCE_INLINE json_res_t decode_unicode_codepoint(struct json_string *str, struct jiffy_parser *ctx, uint32_t *codepoint) {
+    int h1 = hex2int(ctx->data[0]);
+    if (h1 < 0)
+        return format_error(ctx, "invalid unicode 0-th hex");
+    int h2 = hex2int(ctx->data[1]);
+    if (h2 < 0)
+        return format_error(ctx, "invalid unicode 1-th hex");
+    int h3 = hex2int(ctx->data[2]);
+    if (h3 < 0)
+        return format_error(ctx, "invalid unicode 2-th hex");
+    int h4 = hex2int(ctx->data[3]);
+    if (h4 < 0)
+        return format_error(ctx, "invalid unicode 3-th hex");
+
+    *codepoint = (h1 << 12) | (h2 << 8) | (h3 << 4) | h4;
+    return JSON_OK;
+}
+
 static json_res_t json_string_process_unicode(struct json_string *str, struct jiffy_parser *ctx) {
-    return JSON_OK; // TODO
+    uint32_t codepoint;
+    if (decode_unicode_codepoint(str, ctx, &codepoint) != JSON_OK)
+        return JSON_ERROR;
+
+    if (codepoint < 0x80) {
+        json_string_append_char(str, codepoint); /* 0xxxxxxx */
+        jiffy_parser_skip_n_bytes(ctx, sizeof(codepoint));
+        return JSON_OK;
+    }
+    if (codepoint < 0x800) {
+        json_string_append_char(str, ((codepoint >> 6) & 0x1F) | 0xC0); /* 110xxxxx */
+        json_string_append_char(str, ((codepoint     ) & 0x3F) | 0x80); /* 10xxxxxx */
+        jiffy_parser_skip_n_bytes(ctx, sizeof(codepoint));
+        return JSON_OK;
+    }
+    if (codepoint < 0xD800 || codepoint > 0xDFFF) {
+        json_string_append_char(str, ((codepoint >> 12) & 0x0F) | 0xE0); /* 1110xxxx */
+        json_string_append_char(str, ((codepoint >> 6)  & 0x3F) | 0x80); /* 10xxxxxx */
+        json_string_append_char(str, ((codepoint     )  & 0x3F) | 0x80); /* 10xxxxxx */
+        jiffy_parser_skip_n_bytes(ctx, sizeof(codepoint));
+        return JSON_OK;
+    }
+
+    bool is_lead_surrogate = (codepoint >= 0xD800 && codepoint <= 0xDBFF); /* lead surrogate (0xD800..0xDBFF) */
+    if (!is_lead_surrogate)
+        return format_error(ctx, "invalid unicode codepoint %04x", codepoint);
+
+    jiffy_parser_skip_n_bytes(ctx, sizeof(codepoint));
+    EXPECT_CH('\\', ctx);
+    EXPECT_CH('u', ctx);
+
+    uint32_t trail;
+    if (decode_unicode_codepoint(str, ctx, &trail) != JSON_OK)
+        return JSON_ERROR;
+
+    if (trail < 0xDC00 || trail > 0xDFFF) /* valid trail surrogate? (0xDC00..0xDFFF) */
+        return format_error(ctx, "invalid trailing surrogate %04x", trail);
+    jiffy_parser_skip_n_bytes(ctx, sizeof(trail));
+
+    uint32_t lead = codepoint;
+    codepoint = ((((lead-0xD800)&0x3FF)<<10)|((trail-0xDC00)&0x3FF))+0x010000;
+    json_string_append_char(str, ((codepoint >> 18) & 0x07) | 0xF0); /* 11110xxx */
+    json_string_append_char(str, ((codepoint >> 12) & 0x3F) | 0x80); /* 10xxxxxx */
+    json_string_append_char(str, ((codepoint >> 6)  & 0x3F) | 0x80); /* 10xxxxxx */
+    json_string_append_char(str, ((codepoint     )  & 0x3F) | 0x80); /* 10xxxxxx */
+    return JSON_OK;
 }
 
 static json_res_t json_string_process_backslash(struct json_string *str, struct jiffy_parser *ctx) {
@@ -290,7 +390,7 @@ static json_res_t json_string_process_backslash(struct json_string *str, struct 
 
     char res_ch = escaping_table[(uint8_t)ctx->data[0]];
     if (res_ch == '\0')
-        return JSON_ERROR;
+        return format_error(ctx, "invalid escape sequence");
 
     jiffy_parser_skip_one_byte(ctx);
     str->data[str->size++] = res_ch;
@@ -312,7 +412,7 @@ static json_res_t json_string_parse_with_known_max_len(struct json_string *str, 
         if (backslash > str_end) { // copy until string end
             uint32_t bytes_to_copy = str_end - ctx->data;
             if (bytes_to_copy) {
-                json_string_append_norealloc(str, ctx->data, bytes_to_copy);
+                json_string_append_string(str, ctx->data, bytes_to_copy);
                 jiffy_parser_skip_n_bytes(ctx, bytes_to_copy);
             }
             ASSERT_CH('"', ctx);
@@ -321,13 +421,13 @@ static json_res_t json_string_parse_with_known_max_len(struct json_string *str, 
 
         uint32_t bytes_to_copy = backslash - ctx->data;
         if (bytes_to_copy) {
-            json_string_append_norealloc(str, ctx->data, bytes_to_copy);
+            json_string_append_string(str, ctx->data, bytes_to_copy);
             jiffy_parser_skip_n_bytes(ctx, bytes_to_copy);
         }
 
         ASSERT_CH('\\', ctx);
         if (json_string_process_backslash(str, ctx) != JSON_OK)
-            return format_error(ctx, "invalid escape sequence");
+            return JSON_ERROR;
     }
 }
 

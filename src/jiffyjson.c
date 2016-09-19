@@ -14,16 +14,20 @@
 #include <stdlib.h>
 
 #ifdef __SSE2__
-#define JIFFY_MEMCHR_SSE2 1
+#define JIFFY_SSE2 1
 #endif
 
-#ifdef JIFFY_MEMCHR_SSE2
+#ifdef JIFFY_SSE2
 #include <xmmintrin.h>
 #define bsf(x) __builtin_ctz(x)
 #endif
 
-#define FORCE_INLINE __attribute__((always_inline)) inline
-#define HOT __attribute__((hot))
+#ifdef PERFTEST
+#define JIFFYJSON_FORCE_INLINE
+#else
+#define JIFFYJSON_FORCE_INLINE __attribute__((always_inline)) inline
+#endif
+#define JIFFYJSON_HOT __attribute__((hot))
 
 struct jiffy_parser *jiffy_parser_create() {
     return calloc(1, sizeof(struct jiffy_parser));
@@ -37,7 +41,7 @@ void jiffy_parser_destroy(struct jiffy_parser *ctx) {
     free(ctx);
 }
 
-#ifdef JIFFY_MEMCHR_SSE2
+#ifdef JIFFY_SSE2
 static void *memchrSSE2(const char *p, int c, size_t len)
 {
     if (len >= 16) {
@@ -115,24 +119,27 @@ void jiffy_parser_set_large_allocator(struct jiffy_parser *parser,
     parser->large_allocator.ctx = ctx;
 }
 
-static FORCE_INLINE void jiffy_parser_skip_one_byte(struct jiffy_parser *ctx) {
+static JIFFYJSON_FORCE_INLINE void jiffy_parser_skip_one_byte(struct jiffy_parser *ctx) {
     assert(ctx->data_size);
     assert(ctx->data);
     ctx->data++;
     ctx->data_size--;
 }
 
-static FORCE_INLINE void jiffy_parser_skip_n_bytes(struct jiffy_parser *ctx, uint32_t n) {
+static JIFFYJSON_FORCE_INLINE void jiffy_parser_skip_n_bytes(struct jiffy_parser *ctx, uint32_t n) {
     assert(ctx->data_size >= n);
     assert(ctx->data);
     ctx->data += n;
     ctx->data_size -= n;
 }
 
+#define JIFFYJSON_UNLIKELY(x_) __builtin_expect(x_, 0)
+#define JIFFYJSON_LIKELY(x_) __builtin_expect(!!(x_), 1)
+
 // XXX: don't check data_size because it was checked once at the start: data ends with '}'
 #define EXPECT_CH(ch_, ctx_) ({ \
     bool is_error_ = (ctx_)->data[0] != ch_; \
-    if (__builtin_expect(is_error_, false) == true) \
+    if (JIFFYJSON_UNLIKELY(is_error_)) \
         return format_error(ctx_, "expected '%c', got '%c'", ch_, (ctx_)->data[0]); \
     jiffy_parser_skip_one_byte((ctx_)); \
 })
@@ -155,7 +162,7 @@ static const bool is_char_wsp_table[1 << CHAR_BIT] = {
 };
 
 #if 0
-static FORCE_INLINE const uint8_t *skip_wsp_simd(const struct jiffy_parser *ctx) {
+static JIFFYJSON_FORCE_INLINE const uint8_t *skip_wsp_simd(const struct jiffy_parser *ctx) {
     const uint8_t *data = ctx->data;
     const uint8_t* nextAligned = (const uint8_t *)(((size_t)(data) + 15) & (size_t)(~15));
 
@@ -198,80 +205,70 @@ static void skip_wsp(struct jiffy_parser *ctx) {
 }
 
 static void skip_wsp_expect_one_space(struct jiffy_parser *ctx) {
-    if (__builtin_expect(*ctx->data == ' ', true)) {
+    if (JIFFYJSON_LIKELY(*ctx->data == ' ')) {
         jiffy_parser_skip_one_byte(ctx);
         const char c = *ctx->data;
         bool is_non_wsp = !is_char_wsp_table[(uint8_t)c];
-        if (__builtin_expect(is_non_wsp, true))
+        if (JIFFYJSON_LIKELY(is_non_wsp))
             return;
 
         return skip_wsp(ctx);
     }
 
     return skip_wsp(ctx);
-}
-
-static void skip_wsp_expect_nl_and_spaces(struct jiffy_parser *ctx) {
-    if (__builtin_expect(*ctx->data == '\n', true)) {
-        jiffy_parser_skip_one_byte(ctx);
-
-        const uint32_t spaces4 = *(uint32_t *)"    ";
-        while (ctx->data_size > sizeof(uint32_t) && *(uint32_t *)ctx->data == spaces4)
-            jiffy_parser_skip_n_bytes(ctx, sizeof(uint32_t));
-
-        while (ctx->data[0] == ' ')
-            jiffy_parser_skip_one_byte(ctx);
-
-        const char c = *ctx->data;
-        bool is_non_wsp = !is_char_wsp_table[(uint8_t)c];
-        if (__builtin_expect(is_non_wsp, true))
-            return;
-
-        return skip_wsp(ctx);
-    }
-
-    return skip_wsp(ctx);
-}
-
-static FORCE_INLINE bool is_current_char_eq(const struct jiffy_parser *ctx, char c) {
-    return *ctx->data == c;
 }
 
 #define STRLN(s_) (sizeof(s_) - 1)
+
+static void skip_wsp_expect_nl_and_spaces(struct jiffy_parser *ctx) {
+    if (JIFFYJSON_LIKELY(*ctx->data == '\n')) {
+        const uint32_t spaces4 = *(uint32_t *)"    ";
+        const char * const data = ctx->data + STRLN("\n");
+        volatile const char * const src_data = ctx->data + STRLN("\n");
+        (void)src_data;
+        const uint32_t data_size = ctx->data_size - STRLN("\n");
+
+        uint32_t i = 0;
+        while (i < data_size && *(uint32_t *)(&data[i]) == spaces4)
+             i += sizeof(uint32_t);
+
+        while (i < data_size && data[i] == ' ')
+            ++i;
+
+        jiffy_parser_skip_n_bytes(ctx, STRLN("\n") + i);
+        assert(ctx->data[-1] == ' ');
+        assert(ctx->data[0] != ' ');
+
+        const char c = data[i];
+        bool is_non_wsp = !is_char_wsp_table[(uint8_t)c];
+        if (JIFFYJSON_LIKELY(is_non_wsp))
+            return;
+
+        return skip_wsp(ctx);
+    }
+
+    return skip_wsp(ctx);
+}
+
+static JIFFYJSON_FORCE_INLINE bool is_current_char_eq(const struct jiffy_parser *ctx, char c) {
+    return *ctx->data == c;
+}
 
 static void json_object_init(struct jiffy_json_value *val) {
     val->value_type = JVT_OBJECT;
     memset(&val->obj, 0, sizeof(val->obj));
 }
 
-static const char *get_next_backslash(struct jiffy_parser *ctx) {
-    if (ctx->next_backslash >= ctx->data)
-        return ctx->next_backslash;
-
-    const char *next_backslash = memchr(ctx->data, '\\', ctx->data_size);
-    if (!next_backslash) {
-        ctx->next_backslash = ctx->data + ctx->data_size;
-        return ctx->next_backslash;
-    }
-
-    ctx->next_backslash = next_backslash;
-    return ctx->next_backslash;
-}
-
-static FORCE_INLINE bool is_next_backslash_before(struct jiffy_parser *ctx, const char *ptr) {
-    return get_next_backslash(ctx) < ptr;
-}
-
-static FORCE_INLINE void json_string_append_string(struct json_string *str, const char *data, uint32_t size) {
+static JIFFYJSON_FORCE_INLINE void json_string_append_string(struct json_string *str, const char *data, uint32_t size) {
     memcpy(str->data + str->size, data, size);
     str->size += size;
 }
 
-static FORCE_INLINE void json_string_append_char(struct json_string *str, char c) {
+static JIFFYJSON_FORCE_INLINE void json_string_append_char(struct json_string *str, char c) {
     str->data[str->size++] = c;
 }
 
-static FORCE_INLINE int hex2int(char c) {
+static JIFFYJSON_FORCE_INLINE int hex2int(char c) {
     static const int8_t hext2int_table[1 << CHAR_BIT] = {
         [0 ... ('0' - 1)] = -1,
         ['0'] = 0,
@@ -304,7 +301,7 @@ static FORCE_INLINE int hex2int(char c) {
     return hext2int_table[(uint8_t)c];
 }
 
-static FORCE_INLINE json_res_t decode_unicode_codepoint(struct jiffy_parser *ctx, uint32_t *codepoint) {
+static JIFFYJSON_FORCE_INLINE json_res_t decode_unicode_codepoint(struct jiffy_parser *ctx, uint32_t *codepoint) {
     int h1 = hex2int(ctx->data[0]);
     if (h1 < 0)
         return format_error(ctx, "invalid unicode 0-th hex");
@@ -323,8 +320,8 @@ static FORCE_INLINE json_res_t decode_unicode_codepoint(struct jiffy_parser *ctx
 }
 
 static json_res_t json_string_process_unicode(struct json_string *str, struct jiffy_parser *ctx) {
-    uint32_t codepoint;
-    if (decode_unicode_codepoint(ctx, &codepoint) != JSON_OK)
+    uint32_t codepoint = 0;
+    if (JIFFYJSON_UNLIKELY(decode_unicode_codepoint(ctx, &codepoint) != JSON_OK))
         return JSON_ERROR;
 
     if (codepoint < 0x80) {
@@ -354,8 +351,8 @@ static json_res_t json_string_process_unicode(struct json_string *str, struct ji
     EXPECT_CH('\\', ctx);
     EXPECT_CH('u', ctx);
 
-    uint32_t trail;
-    if (decode_unicode_codepoint(ctx, &trail) != JSON_OK)
+    uint32_t trail = 0;
+    if (JIFFYJSON_UNLIKELY(decode_unicode_codepoint(ctx, &trail) != JSON_OK))
         return JSON_ERROR;
 
     if (trail < 0xDC00 || trail > 0xDFFF) /* valid trail surrogate? (0xDC00..0xDFFF) */
@@ -397,43 +394,76 @@ static json_res_t json_string_process_backslash(struct json_string *str, struct 
     return JSON_OK;
 }
 
-static FORCE_INLINE void *large_chunk_alloc(struct jiffy_parser *ctx, uint32_t size) {
+static JIFFYJSON_FORCE_INLINE void *large_chunk_alloc(struct jiffy_parser *ctx, uint32_t size) {
     return ctx->large_allocator.alloc(ctx->large_allocator.ctx, size);
 }
 
-static json_res_t json_string_parse_with_known_max_len(struct json_string *str, struct jiffy_parser *ctx, uint32_t len) {
-    str->data = (char *)large_chunk_alloc(ctx, len);
-    assert(str->data);
-    str->size = 0;
-    const char *str_end = ctx->data + len;
+#ifdef JIFFY_SSE2
+static JIFFYJSON_FORCE_INLINE uint32_t skip_nonspecial_string_characters(const uint8_t *p, uint32_t size) {
+    static const bool string_char_class_table[1 << CHAR_BIT] = {
+        [0x0 ... 0x19] = true,
+        ['"'] = true,
+        ['\\'] = true,
+    };
+    const uint8_t *src_p = p;
 
-    for (;;) {
-        const char *backslash = get_next_backslash(ctx);
-        if (backslash > str_end) { // copy until string end
-            uint32_t bytes_to_copy = str_end - ctx->data;
-            if (bytes_to_copy) {
-                json_string_append_string(str, ctx->data, bytes_to_copy);
-                jiffy_parser_skip_n_bytes(ctx, bytes_to_copy);
-            }
-            ASSERT_CH('"', ctx);
-            return JSON_OK;
+    if (size <= 16) {
+        for (uint32_t i = 0; i < size; ++i) {
+            if (JIFFYJSON_UNLIKELY(string_char_class_table[p[i]]))
+                return i;
         }
-
-        uint32_t bytes_to_copy = backslash - ctx->data;
-        if (bytes_to_copy) {
-            json_string_append_string(str, ctx->data, bytes_to_copy);
-            jiffy_parser_skip_n_bytes(ctx, bytes_to_copy);
-        }
-
-        ASSERT_CH('\\', ctx);
-        if (json_string_process_backslash(str, ctx) != JSON_OK)
-            return JSON_ERROR;
+        return size;
     }
-}
 
-static const char *json_string_get_end(const char *str, uint32_t str_size) {
+    // The rest of string using SIMD
+    static const char dquote[16] = { '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"', '\"' };
+    static const char bslash[16] = { '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\', '\\' };
+    static const char space[16]  = { 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19, 0x19 };
+    const __m128i dq = _mm_loadu_si128((const __m128i *)(&dquote[0]));
+    const __m128i bs = _mm_loadu_si128((const __m128i *)(&bslash[0]));
+    const __m128i sp = _mm_loadu_si128((const __m128i *)(&space[0]));
+
+    // Scan one by one until alignment (unaligned load may cross page boundary and cause crash)
+    const uint8_t *next_aligned = (const uint8_t *)(((size_t)p + 15) & (size_t)(~15));
+    const uint8_t *p_end = p + size;
+    assert(next_aligned < p_end); // guaranteed by check (size <= 16) above
+    if (JIFFYJSON_LIKELY(p != next_aligned)) {
+        const __m128i s = _mm_loadu_si128((const __m128i *)p); // unaligned load
+        const __m128i t1 = _mm_cmpeq_epi8(s, dq);
+        const __m128i t2 = _mm_cmpeq_epi8(s, bs);
+        const __m128i t3 = _mm_cmpeq_epi8(_mm_max_epu8(s, sp), sp); // s < 0x20 <=> max(s, 0x19) == 0x19
+        const __m128i x = _mm_or_si128(_mm_or_si128(t1, t2), t3);
+        uint16_t r = _mm_movemask_epi8(x);
+        if (r != 0) // some of characters are escaped
+            return p - src_p + __builtin_ffs(r) - 1;
+
+        p = next_aligned;
+    }
+
+    const uint8_t *aligned_p_end = (const uint8_t *)((size_t)p_end & (size_t)(~15));
+    for (; p < aligned_p_end; p += 16) {
+        const __m128i s = _mm_load_si128((const __m128i *)p);
+        const __m128i t1 = _mm_cmpeq_epi8(s, dq);
+        const __m128i t2 = _mm_cmpeq_epi8(s, bs);
+        const __m128i t3 = _mm_cmpeq_epi8(_mm_max_epu8(s, sp), sp); // s < 0x20 <=> max(s, 0x19) == 0x19
+        const __m128i x = _mm_or_si128(_mm_or_si128(t1, t2), t3);
+        uint16_t r = _mm_movemask_epi8(x);
+        if (JIFFYJSON_UNLIKELY(r != 0)) // some of characters are escaped
+            return p - src_p + __builtin_ffs(r) - 1;
+    }
+
+    for (; p < p_end; ++p) {
+        if (JIFFYJSON_UNLIKELY(string_char_class_table[*p]))
+            return p - src_p;
+    }
+
+    return size;
+}
+#endif
+
+static const char *json_string_get_end(const char *str, uint32_t str_len) {
     for (;;) {
-        const char *closing_quote_pos = memchr(str, '"', str_size);
+        const char *closing_quote_pos = *str == '"' ? str : memchr(str, '"', str_len);
         if (!closing_quote_pos)
             return NULL;
 
@@ -443,7 +473,7 @@ static const char *json_string_get_end(const char *str, uint32_t str_size) {
             if (i % 2 == 0) {
                 uint32_t diff = closing_quote_pos - str + 1;
                 str += diff;
-                str_size -= diff;
+                str_len -= diff;
                 continue;
             }
         }
@@ -452,44 +482,67 @@ static const char *json_string_get_end(const char *str, uint32_t str_size) {
     }
 }
 
-STATIC HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_parser *ctx) {
+STATIC JIFFYJSON_HOT json_res_t json_string_parse(struct json_string *str, struct jiffy_parser *ctx) {
     EXPECT_CH('"', ctx);
+    const char *str_begin = ctx->data;
+    str->data = NULL;
 
-    const char *closing_quote_pos = memchr(ctx->data, '"', ctx->data_size);
-    if (!closing_quote_pos)
-        return format_error(ctx, "no ending quote for string");
+    for (;;) {
+        uint32_t bytes_to_skip = skip_nonspecial_string_characters((uint8_t *)ctx->data, ctx->data_size);
+        if (JIFFYJSON_UNLIKELY(bytes_to_skip == ctx->data_size))
+            return format_error(ctx, "no ending quote for string");
 
-    uint32_t size = closing_quote_pos - ctx->data;
-    if (size == 0) { // optimized path for empty string
-        str->data = NULL;
-        str->size = 0;
-        ASSERT_CH('"', ctx);
-        return JSON_OK;
+        uint8_t cur_char = ctx->data[bytes_to_skip];
+        if (cur_char == '"') { // string end
+            if (!str->data) {
+                // no special characters in string, don't copy, just set ref to source string
+                jiffy_parser_skip_n_bytes(ctx, bytes_to_skip + STRLN("\""));
+                str->data = (char *)str_begin;
+                str->size = bytes_to_skip;
+                return JSON_OK;
+            }
+
+            // memory for 'str' was already allocated
+            if (bytes_to_skip)
+                json_string_append_string(str, ctx->data, bytes_to_skip);
+            jiffy_parser_skip_n_bytes(ctx, bytes_to_skip + STRLN("\""));
+            return JSON_OK;
+        }
+
+        if (JIFFYJSON_UNLIKELY(cur_char < 0x20))
+            return format_error(ctx, "invalid character '0x%02x' in string", cur_char);
+
+        // found backslash ('\')
+        if (!str->data) { // do lazy allocation of string to prevent allocation in case of string without special characters
+            const char *str_end = json_string_get_end(ctx->data, ctx->data_size);
+            if (JIFFYJSON_UNLIKELY(!str_end))
+                return format_error(ctx, "no non-escaped ending quote for string");
+
+            assert(str_begin == ctx->data);
+            uint32_t str_len = str_end - ctx->data;
+            str->data = (char *)large_chunk_alloc(ctx, str_len);
+            if (JIFFYJSON_UNLIKELY(!str->data))
+                return format_error(ctx, "can't allocate %u bytes for string", str_len);
+            str->size = 0;
+        }
+
+        if (bytes_to_skip) {
+            json_string_append_string(str, ctx->data, bytes_to_skip);
+            jiffy_parser_skip_n_bytes(ctx, bytes_to_skip + STRLN("\\"));
+        } else {
+            jiffy_parser_skip_one_byte(ctx);
+        }
+
+        if (JIFFYJSON_UNLIKELY(json_string_process_backslash(str, ctx) != JSON_OK))
+            return JSON_ERROR;
     }
-
-    if (closing_quote_pos[-1] == '\\') {
-        const char *json_string_end = json_string_get_end(closing_quote_pos, ctx->data_size - size);
-        if (!json_string_end)
-            return format_error(ctx, "no non-escaped ending quote for string");
-        return json_string_parse_with_known_max_len(str, ctx, json_string_end - ctx->data);
-    }
-
-    if (is_next_backslash_before(ctx, closing_quote_pos))
-        return json_string_parse_with_known_max_len(str, ctx, size);
-
-    str->data = (char *)ctx->data;
-    str->size = size;
-    // TODO: make flag that we don't own string
-
-    jiffy_parser_skip_n_bytes(ctx, size + STRLN("\""));
-    return JSON_OK;
 }
 
 static json_res_t json_value_parse(struct jiffy_json_value *val, struct jiffy_parser *ctx);
 
 static json_res_t json_parse_kv(struct json_kv *kv, struct jiffy_parser *ctx) {
     json_res_t r = json_string_parse(&kv->k, ctx);
-    if (r != JSON_OK)
+    if (JIFFYJSON_UNLIKELY(r != JSON_OK))
         return r;
 
     if (is_current_char_eq(ctx, ':')) {
@@ -504,7 +557,7 @@ static json_res_t json_parse_kv(struct json_kv *kv, struct jiffy_parser *ctx) {
     return json_value_parse(&kv->v, ctx);
 }
 
-static FORCE_INLINE void *small_object_alloc(struct jiffy_parser *ctx, uint32_t size) {
+static JIFFYJSON_FORCE_INLINE void *small_object_alloc(struct jiffy_parser *ctx, uint32_t size) {
     return ctx->small_allocator.alloc(ctx->small_allocator.ctx, size);
 }
 
@@ -534,7 +587,7 @@ static json_res_t json_array_parse(struct jiffy_json_value *val, struct jiffy_pa
     for (;;) {
         struct jiffy_json_value *inner_val = jvector_push_back(&ctx->values_cache);
         json_res_t r = json_value_parse(inner_val, ctx);
-        if (r != JSON_OK)
+        if (JIFFYJSON_UNLIKELY(r != JSON_OK))
             return r;
 
         if (is_current_char_eq(ctx, ',')) {
@@ -641,7 +694,7 @@ static json_res_t json_value_parse(struct jiffy_json_value *val, struct jiffy_pa
     };
 
     json_value_parser_t parser = handlers[(uint8_t)ctx->data[0]];
-    if (!parser)
+    if (JIFFYJSON_UNLIKELY(!parser))
         return JSON_ERROR;
 
     return parser(val, ctx);
@@ -660,7 +713,7 @@ static json_res_t json_object_parse(struct jiffy_json_value *val, struct jiffy_p
     for (;;) {
         struct json_kv *kv = jvector_push_back(&ctx->kv_cache);
         json_res_t r = json_parse_kv(kv, ctx);
-        if (r != JSON_OK)
+        if (JIFFYJSON_UNLIKELY(r != JSON_OK))
             return r;
 
         if (is_current_char_eq(ctx, ',')) {
@@ -703,11 +756,11 @@ static json_res_t check_data_end(struct jiffy_parser *ctx) {
 static json_res_t json_parse_impl(struct jiffy_json_value *val, struct jiffy_parser *ctx) {
     if (!is_current_char_eq(ctx, '{'))
         skip_wsp(ctx);
-    if (check_data_end(ctx) != JSON_OK)
+    if (JIFFYJSON_UNLIKELY(check_data_end(ctx) != JSON_OK))
         return JSON_ERROR;
 
     json_res_t r = json_object_parse(val, ctx);
-    if (r != JSON_OK)
+    if (JIFFYJSON_UNLIKELY(r != JSON_OK))
         return r;
     EXPECT_END(ctx);
     return r;
@@ -736,10 +789,8 @@ struct jiffy_json_value *jiffy_parser_parse(struct jiffy_parser *parser) {
     jiffy_parser_init(parser);
     struct jiffy_json_value *val = small_object_alloc(parser, sizeof(*val));
     json_res_t r = json_parse_impl(val, parser);
-    if (r != JSON_OK) {
-        printf("invalid json found at pos '%.*s'\n", (int)(MIN(30, parser->data_size)), parser->data);
+    if (JIFFYJSON_UNLIKELY(r != JSON_OK))
         return NULL;
-    }
 
     return val;
 }

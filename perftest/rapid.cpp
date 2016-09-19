@@ -20,9 +20,15 @@ using namespace rapidjson;
 
 extern "C"
 void test_rapidjson(const char *data, size_t data_size) {
+#ifdef RAPIDJSON_TEST_MEMORY_STREAM
     MemoryStream ms(data, data_size);
-    AutoUTFInputStream<unsigned, MemoryStream> is(ms);
+    EncodedInputStream<UTF8<>, MemoryStream> is(ms);
+#else
+    const std::string str(data, data_size);
+    StringStream is(str.c_str());
+#endif
+
     Document doc;
-    doc.ParseStream<0, AutoUTF<unsigned> >(is);
+    doc.ParseStream<kParseNoFlags, UTF8<>>(is);
     assert(doc.IsObject());
 }

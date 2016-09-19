@@ -84,9 +84,13 @@ static void test_jiffyjson(const char *data, size_t size) {
     struct jiffy_parser *parser = jiffy_parser_create();
     jiffy_parser_set_input(parser, data, size);
     struct jiffy_json_value *val = jiffy_parser_parse(parser);
-    if (!val)
+    if (!val) {
+        printf("%s\n", jiffy_parser_get_error(parser));
         abort();
+    }
 }
+
+extern void test_rapidjson(const char *data, size_t data_size);
 
 int main(int argc, char *argv[]) {
     size_t size;
@@ -107,7 +111,6 @@ int main(int argc, char *argv[]) {
         TIMER_STOP(size, etalon_time_mcs, "jiffyjson");
     }
 
-    extern void test_rapidjson(const char *data, size_t data_size);
     {
         TIMER_START();
             test_rapidjson(data, size);

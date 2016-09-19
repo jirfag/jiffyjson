@@ -16,6 +16,7 @@
     json_res_t res_ = json_string_parse(&str_, parser_); \
     ASSERT_EQ(JSON_OK, res_) << s_ << " -> " << exp_ << ": " << jiffy_parser_get_error(parser_); \
     ASSERT_EQ(exp_, std::string(str_.data, str_.size)); \
+    ASSERT_EQ(1 /* } */, parser_->data_size); \
     jiffy_parser_destroy(parser_); \
 })
 
@@ -77,6 +78,14 @@ TEST(StringDecoding, Errors) {
     EXPECT_STRING_DECODING_ERROR("\"\\udbff\"", "expected '\\', got '\"'");
     EXPECT_STRING_DECODING_ERROR("\"\\udbff\\x\"", "expected 'u', got 'x'");
     EXPECT_STRING_DECODING_ERROR("\"\\udbff\\u\"", "invalid unicode 0-th hex");
+
+    EXPECT_STRING_DECODING_ERROR("\"a\nb\"", "invalid character '0x0a' in string");
+    EXPECT_STRING_DECODING_ERROR("\"a\nb\\n\"", "invalid character '0x0a' in string");
+
+    EXPECT_STRING_DECODING_ERROR("\"a\b\"", "invalid character '0x08' in string");
+    EXPECT_STRING_DECODING_ERROR("\"a\f\"", "invalid character '0x0c' in string");
+    EXPECT_STRING_DECODING_ERROR("\"a\r\"", "invalid character '0x0d' in string");
+    EXPECT_STRING_DECODING_ERROR("\"a\t\"", "invalid character '0x09' in string");
 }
 
 TEST(StringDecoding, Unicode) {
@@ -84,4 +93,6 @@ TEST(StringDecoding, Unicode) {
     TEST_STRING_DECODING("\\u0081", "\xc2\x81");
     TEST_STRING_DECODING("\\ud7ff", "\xed\x9f\xbf");
     TEST_STRING_DECODING("\\ud800\\udc00", "\xf0\x90\x80\x80");
+
+    TEST_STRING_DECODING("sp ace", "sp ace");
 }

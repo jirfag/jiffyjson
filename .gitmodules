@@ -1,0 +1,6 @@
+[submodule "third_party/ujson4c"]
+	path = third_party/ujson4c
+	url = https://github.com/esnme/ujson4c.git
+[submodule "third_party/rapidjson"]
+	path = third_party/rapidjson
+	url = https://github.com/miloyip/rapidjson.git

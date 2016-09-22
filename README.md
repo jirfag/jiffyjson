@@ -40,6 +40,7 @@ $ ./perftest/bench ../perftest/twitter.json
 
 #### Intel(R) Core(TM) i5-4258U CPU @ 2.40GHz && Mac OS X && clang 3.8.0
 ```
+$ ./perftest/bench ../perftest/twitter.json
 'strdup' took 417mcs, speed is 1514.4Mb/sec = 1.0 * etalon
 'jiffyjson' took 1263mcs, speed is 500.0Mb/sec = 3.0 * etalon
 'rapidjson' took 2715mcs, speed is 232.6Mb/sec = 6.5 * etalon

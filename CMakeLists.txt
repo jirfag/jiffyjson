@@ -30,7 +30,7 @@ else(PERFTEST)
             endif()
             set(CMAKE_AR "gcc-ar")
             set(CMAKE_RANLIB "gcc-ranlib")
-        endif(CMAKE_COMPILER_IS_GNUC)
+        endif(CMAKE_COMPILER_IS_GNUCC)
     endif(NOT DEBUG)
 endif(PERFTEST)
 

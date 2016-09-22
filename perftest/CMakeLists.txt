@@ -1,5 +1,5 @@
-set(CMAKE_C_FLAGS "${COMMON_FLAGS}")
-set(CMAKE_CXX_FLAGS "${COMMON_FLAGS}")
+set(CMAKE_C_FLAGS "${COMMON_FLAGS} -std=gnu99")
+set(CMAKE_CXX_FLAGS "${COMMON_FLAGS} -std=gnu++11")
 
 set(BENCH_SOURCES
     main.c

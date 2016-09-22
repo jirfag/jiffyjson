@@ -14,8 +14,9 @@
 #include "jiffyjson.h"
 #include "region_allocator.h"
 #include "ujson4c/src/ujdecode.h"
+#ifdef NEED_YAJL
 #include <yajl/yajl_tree.h>
-
+#endif
 
 static size_t get_file_size(int fd) {
     struct stat st;
@@ -72,6 +73,7 @@ static void test_ujson4c(const char *data, size_t size) {
     assert(obj);
 }
 
+#ifdef NEED_YAJL
 static void test_yajl(const char *data, size_t size) {
     char *data_copy = strndup(data, size);
     char errbuf[1024];
@@ -79,6 +81,7 @@ static void test_yajl(const char *data, size_t size) {
     (void)node;
     free(data_copy);
 }
+#endif
 
 static void test_jiffyjson(const char *data, size_t size) {
     struct jiffy_parser *parser = jiffy_parser_create();
@@ -123,11 +126,13 @@ int main(int argc, char *argv[]) {
         TIMER_STOP(size, etalon_time_mcs, "ujson4c");
     }
 
+#ifdef NEED_YAJL
     {
         TIMER_START();
             test_yajl(data, size);
         TIMER_STOP(size, etalon_time_mcs, "yajl");
     }
+#endif
 
     return 0;
 }

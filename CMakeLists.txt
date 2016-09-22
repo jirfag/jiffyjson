@@ -19,11 +19,11 @@ else(PERFTEST)
         if(CMAKE_COMPILER_IS_GNUCC)
             # because of missing -flto support before 4.8
             if (CMAKE_C_COMPILER_VERSION VERSION_LESS 4.8)
-                message(FATAL_ERROR "GCC version must be at least 4.8!")
+                message(FATAL_ERROR "GCC version must be at least 4.8, current version: ${CMAKE_C_COMPILER_VERSION}!")
             endif()
 
             if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.8)
-                message(FATAL_ERROR "G++ version must be at least 4.8!")
+                message(FATAL_ERROR "G++ version must be at least 4.8, current version: ${CMAKE_CXX_COMPILER_VERSION}!")
             endif()
 
             set(COMMON_FLAGS "${COMMON_FLAGS} -flto")

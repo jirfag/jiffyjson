@@ -224,10 +224,9 @@ static void skip_wsp_expect_nl_and_spaces(struct jiffy_parser *ctx) {
     if (JIFFYJSON_LIKELY(*ctx->data == '\n')) {
         const uint32_t spaces4 = *(uint32_t *)"    ";
         const char * const data = ctx->data + STRLN("\n");
-        volatile const char * const src_data = ctx->data + STRLN("\n");
-        (void)src_data;
         const uint32_t data_size = ctx->data_size - STRLN("\n");
 
+        //TODO: align for uint32_t*
         uint32_t i = 0;
         while (i < data_size && *(uint32_t *)(&data[i]) == spaces4)
              i += sizeof(uint32_t);

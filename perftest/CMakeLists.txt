@@ -1,5 +1,5 @@
-set(CMAKE_C_FLAGS "${COMMON_FLAGS} -std=gnu99")
-set(CMAKE_CXX_FLAGS "${COMMON_FLAGS} -std=gnu++11")
+set(CMAKE_C_FLAGS "${COMMON_FLAGS} -std=c99")
+set(CMAKE_CXX_FLAGS "${COMMON_FLAGS} -std=c++11")
 
 set(BENCH_SOURCES
     main.c
@@ -16,4 +16,4 @@ include_directories(
 )
 
 add_executable(bench ${BENCH_SOURCES})
-target_link_libraries(bench jiffyjson yajl)
+target_link_libraries(bench jiffyjson)

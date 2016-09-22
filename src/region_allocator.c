@@ -58,7 +58,7 @@ void *region_allocator_alloc(struct region_allocator *ra, uint32_t size) {
     assert(size <= new_area_size);
     struct mem_area *cur_area = ra->cur_area;
     if (!cur_area || cur_area->cur_size < size) {
-        void *data = mmap(NULL, new_area_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        void *data = mmap(NULL, new_area_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
         assert(data != MAP_FAILED);
         cur_area = ra->cur_area = region_allocator_add_mem_impl(ra, data, new_area_size, free);
        //printf("allocating %zu bytes area\n", new_area_size);

@@ -16,6 +16,8 @@
 #include "rapidjson/encodedstream.h"
 #include "rapidjson/memorystream.h"
 
+#include <string>
+
 using namespace rapidjson;
 
 extern "C"
@@ -24,8 +26,8 @@ void test_rapidjson(const char *data, size_t data_size) {
     MemoryStream ms(data, data_size);
     EncodedInputStream<UTF8<>, MemoryStream> is(ms);
 #else
-    const std::string str(data, data_size);
-    StringStream is(str.c_str());
+    const std::string s(data, data_size);
+    StringStream is(s.c_str());
 #endif
 
     Document doc;

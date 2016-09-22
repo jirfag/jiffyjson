@@ -17,7 +17,7 @@ struct one_mmap_allocator *one_mmap_allocator_create(uint32_t size) {
     if (!a)
         return NULL;
 
-    a->data = a->src_data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    a->data = a->src_data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     if (a->data == MAP_FAILED) {
         free(a);
         return NULL;

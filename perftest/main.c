@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <time.h>
+#include <sys/time.h>
 
 #include "jiffyjson.h"
 #include "region_allocator.h"
@@ -39,18 +39,18 @@ static const char *read_file(size_t *size, const char *fname) {
     return data;
 }
 
-static uint32_t get_timespec_diff_mcs(const struct timespec *b, const struct timespec *e) {
-    return (e->tv_sec - b->tv_sec) * 1000000 + (e->tv_nsec - b->tv_nsec) / 1000;
+static uint32_t get_timeval_diff_mcs(const struct timeval *b, const struct timeval *e) {
+    return (e->tv_sec - b->tv_sec) * 1000000 + (e->tv_usec - b->tv_usec);
 }
 
 #define TIMER_START() \
-    struct timespec ts_start_; \
-    clock_gettime(CLOCK_MONOTONIC, &ts_start_)
+    struct timeval ts_start_; \
+    gettimeofday(&ts_start_, NULL); \
 
 #define TIMER_STOP(size_, etalon_time_mcs_, name_) ({ \
-    struct timespec ts_finish_; \
-    clock_gettime(CLOCK_MONOTONIC, &ts_finish_); \
-    uint32_t elapsed_mcs_ = get_timespec_diff_mcs(&ts_start_, &ts_finish_); \
+    struct timeval ts_finish_; \
+    gettimeofday(&ts_finish_, NULL); \
+    uint32_t elapsed_mcs_ = get_timeval_diff_mcs(&ts_start_, &ts_finish_); \
     double speed_mb_sec_ = ((double)size_) / (double)elapsed_mcs_; \
     double etalon_mul_coef_ = etalon_time_mcs_ ? ((double)elapsed_mcs_ / etalon_time_mcs_) : 1; \
     printf("'%s' took %umcs, speed is %.1fMb/sec = %.1f * etalon\n", \

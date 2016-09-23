@@ -108,20 +108,25 @@ int main(int argc, char *argv[]) {
 
     uint32_t etalon_time_mcs = test_strdup(data, size);
 
+    const int n = 1000;
+    const bool alone=true;
     {
         TIMER_START();
+        for(int i=0; i<n; i++)
             test_jiffyjson(data, size);
         TIMER_STOP(size, etalon_time_mcs, "jiffyjson");
     }
 
     {
         TIMER_START();
+        for(int i=0; !alone && i<n; i++)
             test_rapidjson(data, size);
         TIMER_STOP(size, etalon_time_mcs, "rapidjson");
     }
 
     {
         TIMER_START();
+        for(int i=0; !alone && i<n; i++)
             test_ujson4c(data, size);
         TIMER_STOP(size, etalon_time_mcs, "ujson4c");
     }
@@ -129,6 +134,7 @@ int main(int argc, char *argv[]) {
 #ifdef NEED_YAJL
     {
         TIMER_START();
+        for(int i=0; !alone && i<n; i++)
             test_yajl(data, size);
         TIMER_STOP(size, etalon_time_mcs, "yajl");
     }

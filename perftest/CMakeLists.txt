@@ -15,8 +15,12 @@ include_directories(
     ../third_party
 )
 
+set_source_files_properties(jiffyjson_alone.c PROPERTIES COMPILE_FLAGS -fno-omit-frame-pointer)
+
 add_executable(bench main.c ${BENCH_SOURCES})
 add_executable(gbench gbench.cpp ${BENCH_SOURCES})
+add_executable(jiffyjson_alone jiffyjson_alone.c  ${BENCH_SOURCES})
 target_link_libraries(bench jiffyjson)
 target_link_libraries(gbench jiffyjson benchmark rt)
+target_link_libraries(jiffyjson_alone jiffyjson)
 

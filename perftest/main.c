@@ -109,7 +109,8 @@ int main(int argc, char *argv[]) {
     uint32_t etalon_time_mcs = test_strdup(data, size);
 
     const int n = 1000;
-    const bool alone=true;
+    const bool alone=false;
+
     {
         TIMER_START();
         for(int i=0; i<n; i++)

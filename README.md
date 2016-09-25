@@ -39,9 +39,9 @@ make
 ```
 Benchmark               Time           CPU Iterations
 -----------------------------------------------------
-test_ujson4c      2291503 ns    2291255 ns        310   262.851MB/s
 test_strdup         75206 ns      75196 ns       9375   7.82148GB/s
-test_yajl         6061859 ns    6060270 ns        116   99.3782MB/s
-test_jiffyjson     963051 ns     962952 ns        727   625.429MB/s
+test_jiffyjson     963051 ns     962952 ns        727   625.429MB/s // this lib
 test_rapid_wr     1710053 ns    1709645 ns        411   352.271MB/s
+test_ujson4c      2291503 ns    2291255 ns        310   262.851MB/s
+test_yajl         6061859 ns    6060270 ns        116   99.3782MB/s
 ```

@@ -22,7 +22,7 @@
 #define bsf(x) __builtin_ctz(x)
 #endif
 
-#ifdef PERFTEST
+#ifdef PROFILING
 #define JIFFYJSON_FORCE_INLINE
 #else
 #define JIFFYJSON_FORCE_INLINE __attribute__((always_inline)) inline

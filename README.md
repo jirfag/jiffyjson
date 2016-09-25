@@ -28,21 +28,20 @@ The fastest
 -------
 
 This library is the quickest of founded high-level libraries in any language, allowing to parse JSON.
+To run performance benchmark do:
+```
+cmake -DPERFTEST=ON ..
+make
+./perftest/gbench ../perftest/twitter.json
+```
 
 #### Intel(R) Xeon(R) CPU E5-2676 v3 @ 2.40GHz && Linux && gcc version 6.2.0
 ```
-$ ./perftest/bench ../perftest/twitter.json
-'strdup' took 319mcs, speed is 1979.7Mb/sec = 1.0 * etalon
-'jiffyjson' took 967mcs, speed is 653.1Mb/sec = 3.0 * etalon
-'rapidjson' took 2351mcs, speed is 268.6Mb/sec = 7.4 * etalon
-'ujson4c' took 2166mcs, speed is 291.6Mb/sec = 6.8 * etalon
-```
-
-#### Intel(R) Core(TM) i5-4258U CPU @ 2.40GHz && Mac OS X && clang 3.8.0
-```
-$ ./perftest/bench ../perftest/twitter.json
-'strdup' took 417mcs, speed is 1514.4Mb/sec = 1.0 * etalon
-'jiffyjson' took 1263mcs, speed is 500.0Mb/sec = 3.0 * etalon
-'rapidjson' took 2715mcs, speed is 232.6Mb/sec = 6.5 * etalon
-'ujson4c' took 2751mcs, speed is 229.6Mb/sec = 6.6 * etalon
+Benchmark               Time           CPU Iterations
+-----------------------------------------------------
+test_ujson4c      2291503 ns    2291255 ns        310   262.851MB/s
+test_strdup         75206 ns      75196 ns       9375   7.82148GB/s
+test_yajl         6061859 ns    6060270 ns        116   99.3782MB/s
+test_jiffyjson     963051 ns     962952 ns        727   625.429MB/s
+test_rapid_wr     1710053 ns    1709645 ns        411   352.271MB/s
 ```

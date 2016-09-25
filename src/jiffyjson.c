@@ -154,12 +154,14 @@ static JIFFYJSON_FORCE_INLINE void jiffy_parser_skip_n_bytes(struct jiffy_parser
         return JSON_ERROR; \
 })
 
-static const bool is_char_wsp_table[1 << CHAR_BIT] = {
+static const bool is_char_wsp_table[' '+1] = {
     [' '] = true,
     ['\t'] = true,
     ['\r'] = true,
     ['\n'] = true,
 };
+
+#define IS_CHAR_WSP(c) ( c<=' ' && is_char_wsp_table[c] )
 
 #if 0
 static JIFFYJSON_FORCE_INLINE const uint8_t *skip_wsp_simd(const struct jiffy_parser *ctx) {
@@ -168,7 +170,7 @@ static JIFFYJSON_FORCE_INLINE const uint8_t *skip_wsp_simd(const struct jiffy_pa
 
     // 16-byte align to the next boundary
     while (data != nextAligned) {
-        if (is_char_wsp_table[*data])
+        if (IS_CHAR_WSP(*data))
             ++data;
         else
             return data;
@@ -197,7 +199,7 @@ static void skip_wsp(struct jiffy_parser *ctx) {
 
 static void skip_wsp(struct jiffy_parser *ctx) {
     const uint8_t *data = (const uint8_t *)ctx->data;
-    for (; is_char_wsp_table[*data]; ++data) {}
+    for (; IS_CHAR_WSP(*data); ++data) {}
 
     uint32_t diff = data - (const uint8_t *)ctx->data;
     if (diff)
@@ -208,7 +210,7 @@ static void skip_wsp_expect_one_space(struct jiffy_parser *ctx) {
     if (JIFFYJSON_LIKELY(*ctx->data == ' ')) {
         jiffy_parser_skip_one_byte(ctx);
         const char c = *ctx->data;
-        bool is_non_wsp = !is_char_wsp_table[(uint8_t)c];
+        bool is_non_wsp = !IS_CHAR_WSP( (uint8_t)c );
         if (JIFFYJSON_LIKELY(is_non_wsp))
             return;
 
@@ -239,7 +241,7 @@ static void skip_wsp_expect_nl_and_spaces(struct jiffy_parser *ctx) {
         assert(ctx->data[0] != ' ');
 
         const char c = data[i];
-        bool is_non_wsp = !is_char_wsp_table[(uint8_t)c];
+        bool is_non_wsp = !IS_CHAR_WSP( (uint8_t)c );
         if (JIFFYJSON_LIKELY(is_non_wsp))
             return;
 
@@ -399,16 +401,15 @@ static JIFFYJSON_FORCE_INLINE void *large_chunk_alloc(struct jiffy_parser *ctx, 
 
 #ifdef JIFFY_SSE2
 static JIFFYJSON_FORCE_INLINE uint32_t skip_nonspecial_string_characters(const uint8_t *p, uint32_t size) {
-    static const bool string_char_class_table[1 << CHAR_BIT] = {
+    static const bool string_char_class_table['"'+1] = { //Do not use 256 bytes or whatever to save extra L1 cache lines
         [0x0 ... 0x19] = true,
         ['"'] = true,
-        ['\\'] = true,
     };
     const uint8_t *src_p = p;
 
     if (size <= 16) {
         for (uint32_t i = 0; i < size; ++i) {
-            if (JIFFYJSON_UNLIKELY(string_char_class_table[p[i]]))
+            if( JIFFYJSON_UNLIKELY(p[i]=='\\' || (p[i]<='"' && string_char_class_table[p[i]])) )
                 return i;
         }
         return size;
@@ -452,7 +453,7 @@ static JIFFYJSON_FORCE_INLINE uint32_t skip_nonspecial_string_characters(const u
     }
 
     for (; p < p_end; ++p) {
-        if (JIFFYJSON_UNLIKELY(string_char_class_table[*p]))
+        if (JIFFYJSON_UNLIKELY(*p=='\\' || (*p<='"' && string_char_class_table[*p])) )
             return p - src_p;
     }
 
@@ -743,7 +744,7 @@ static json_res_t check_data_end(struct jiffy_parser *ctx) {
         return JSON_ERROR;
 
     uint32_t i;
-    for (i = ctx->data_size - 1; i > 0 && is_char_wsp_table[(uint8_t)ctx->data[i]]; --i) {};
+    for (i = ctx->data_size - 1; i > 0 && IS_CHAR_WSP( (uint8_t)ctx->data[i] ); --i) {};
 
     if (i == 0 || ctx->data[i] != '}')
         return JSON_ERROR;

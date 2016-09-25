@@ -15,7 +15,6 @@
 #include "region_allocator.h"
 
 #include "ujson4c/src/ujdecode.h"
-#include "yajl/yajl_tree.h"
 #include "google_benchmark/include/benchmark/benchmark_api.h"
 
 
@@ -55,11 +54,15 @@ static void test_ujson4c(benchmark::State& state) {
 }
 BENCHMARK(test_ujson4c);
 
+extern "C" {
+    extern void *yajl_tree_parse (const char *input, char *error_buffer, size_t error_buffer_size);
+}
+
 static void test_yajl(benchmark::State& state) {
     while (state.KeepRunning()) {
         char *data_copy = strndup(data, size);
         char errbuf[1024];
-        yajl_val node = yajl_tree_parse(data_copy, errbuf, sizeof(errbuf));
+        void *node = yajl_tree_parse(data_copy, errbuf, sizeof(errbuf));
         (void)node;
         free(data_copy);
         benchmark::ClobberMemory();

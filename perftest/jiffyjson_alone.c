@@ -14,9 +14,6 @@
 #include "jiffyjson.h"
 #include "region_allocator.h"
 #include "ujson4c/src/ujdecode.h"
-#ifdef NEED_YAJL
-#include <yajl/yajl_tree.h>
-#endif
 
 static size_t get_file_size(int fd) {
     struct stat st;

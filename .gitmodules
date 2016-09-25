@@ -7,3 +7,6 @@
 [submodule "third_party/google_benchmark"]
 	path = third_party/google_benchmark
 	url = https://github.com/google/benchmark.git
+[submodule "third_party/yajl"]
+	path = third_party/yajl
+	url = https://github.com/lloyd/yajl

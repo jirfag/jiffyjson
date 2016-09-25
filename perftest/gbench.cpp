@@ -13,10 +13,9 @@
 
 #include "jiffyjson.h"
 #include "region_allocator.h"
+
 #include "ujson4c/src/ujdecode.h"
-#ifdef NEED_YAJL
-#include <yajl/yajl_tree.h>
-#endif
+#include "yajl/yajl_tree.h"
 #include "google_benchmark/include/benchmark/benchmark_api.h"
 
 
@@ -56,8 +55,7 @@ static void test_ujson4c(benchmark::State& state) {
 }
 BENCHMARK(test_ujson4c);
 
-#ifdef NEED_YAJL
-static void test_yajlbenchmark::State& state() {
+static void test_yajl(benchmark::State& state) {
     while (state.KeepRunning()) {
         char *data_copy = strndup(data, size);
         char errbuf[1024];
@@ -69,7 +67,6 @@ static void test_yajlbenchmark::State& state() {
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size);
 }
 BENCHMARK(test_yajl);
-#endif
 
 static void test_jiffyjson(benchmark::State& state) {
     while (state.KeepRunning()) {

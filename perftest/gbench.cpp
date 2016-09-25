@@ -46,40 +46,43 @@ static const char *read_file(size_t *size, const char *fname) {
 }
 
 static void test_ujson4c(benchmark::State& state) {
-while (state.KeepRunning()) {
-    void *state;
-    UJObject obj = UJDecode(data, size, NULL, &state);
-    assert(obj);
-	benchmark::ClobberMemory();
-}
+    while (state.KeepRunning()) {
+        void *state;
+        UJObject obj = UJDecode(data, size, NULL, &state);
+        assert(obj);
+        benchmark::ClobberMemory();
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size);
 }
 BENCHMARK(test_ujson4c);
 
 #ifdef NEED_YAJL
 static void test_yajlbenchmark::State& state() {
-while (state.KeepRunning()) {
-    char *data_copy = strndup(data, size);
-    char errbuf[1024];
-    yajl_val node = yajl_tree_parse(data_copy, errbuf, sizeof(errbuf));
-    (void)node;
-    free(data_copy);
-	benchmark::ClobberMemory();
-}
+    while (state.KeepRunning()) {
+        char *data_copy = strndup(data, size);
+        char errbuf[1024];
+        yajl_val node = yajl_tree_parse(data_copy, errbuf, sizeof(errbuf));
+        (void)node;
+        free(data_copy);
+        benchmark::ClobberMemory();
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size);
 }
 BENCHMARK(test_yajl);
 #endif
 
 static void test_jiffyjson(benchmark::State& state) {
-while (state.KeepRunning()) {
-    struct jiffy_parser *parser = jiffy_parser_create();
-    jiffy_parser_set_input(parser, data, size);
-    struct jiffy_json_value *val = jiffy_parser_parse(parser);
-    if (!val) {
-        printf("%s\n", jiffy_parser_get_error(parser));
-        abort();
+    while (state.KeepRunning()) {
+        struct jiffy_parser *parser = jiffy_parser_create();
+        jiffy_parser_set_input(parser, data, size);
+        struct jiffy_json_value *val = jiffy_parser_parse(parser);
+        if (!val) {
+            printf("%s\n", jiffy_parser_get_error(parser));
+            abort();
+        }
+        benchmark::ClobberMemory();
     }
-	benchmark::ClobberMemory();
-}
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size);
 }
 BENCHMARK(test_jiffyjson);
 
@@ -88,18 +91,19 @@ extern void test_rapidjson(const char *data, size_t data_size);
 };
 
 static void test_rapid_wr(benchmark::State& state) {
-while (state.KeepRunning()) {
-	test_rapidjson(data, size);
-	benchmark::ClobberMemory();
-}
+    while (state.KeepRunning()) {
+        test_rapidjson(data, size);
+        benchmark::ClobberMemory();
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size);
 }
 BENCHMARK(test_rapid_wr);
 
 int main(int argc, char *argv[]) {
     data = read_file(&size, argv[1]);
 
-  benchmark::Initialize(&argc, argv);
-  benchmark::RunSpecifiedBenchmarks();
+    benchmark::Initialize(&argc, argv);
+    benchmark::RunSpecifiedBenchmarks();
 
     return 0;
 }

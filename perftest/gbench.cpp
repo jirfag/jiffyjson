@@ -18,9 +18,8 @@
 #include "google_benchmark/include/benchmark/benchmark_api.h"
 
 
-size_t size;
-const char *data;
-
+static size_t size;
+static const char *data;
 
 static size_t get_file_size(int fd) {
     struct stat st;
@@ -53,6 +52,16 @@ static void test_ujson4c(benchmark::State& state) {
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size);
 }
 BENCHMARK(test_ujson4c);
+
+static void test_strdup(benchmark::State& state) {
+    while (state.KeepRunning()) {
+        char *r = strndup(data, size);
+        benchmark::ClobberMemory();
+        free(r);
+    }
+    state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size);
+}
+BENCHMARK(test_strdup);
 
 extern "C" {
     extern void *yajl_tree_parse (const char *input, char *error_buffer, size_t error_buffer_size);

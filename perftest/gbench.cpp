@@ -17,7 +17,7 @@
 #ifdef NEED_YAJL
 #include <yajl/yajl_tree.h>
 #endif
-#include "benchmark/benchmark_api.h"
+#include "google_benchmark/include/benchmark/benchmark_api.h"
 
 
 size_t size;

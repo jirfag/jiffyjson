@@ -21,6 +21,19 @@ add_executable(bench main.c ${BENCH_SOURCES})
 add_executable(gbench gbench.cpp ${BENCH_SOURCES})
 add_executable(jiffyjson_alone jiffyjson_alone.c  ${BENCH_SOURCES})
 target_link_libraries(bench jiffyjson)
-target_link_libraries(gbench jiffyjson benchmark rt)
+target_link_libraries(gbench
+    jiffyjson
+    -Lgoogle_benchmark-prefix/src/google_benchmark-build/src
+    benchmark
+    pthread
+    rt
+)
 target_link_libraries(jiffyjson_alone jiffyjson)
 
+include(ExternalProject)
+ExternalProject_Add(google_benchmark
+    SOURCE_DIR "${CMAKE_SOURCE_DIR}/third_party/google_benchmark"
+    GIT_SUBMODULES google_benchmark
+    CMAKE_ARGS -DBENCHMARK_ENABLE_TESTING=OFF -DCMAKE_BUILD_TYPE=Release
+    INSTALL_COMMAND ""
+)

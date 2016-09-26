@@ -39,6 +39,9 @@ target_link_libraries(gbench
     -Lgoogle_benchmark-prefix/src/google_benchmark-build/src benchmark
     -Lyajl-prefix/src/yajl-build/yajl-2.1.1/lib yajl_s
     pthread
-    rt
 )
+if (NOT ${APPLE})
+    target_link_libraries(gbench rt)
+endif (${APPLE})
+
 target_link_libraries(jiffyjson_alone jiffyjson)

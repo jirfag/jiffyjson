@@ -4,6 +4,7 @@ set(UNITTEST_SOURCES
     main.cpp
     string_decoding.cpp
     json_parser.cpp
+    json.org_checker.cpp
 )
 include_directories(../include)
 

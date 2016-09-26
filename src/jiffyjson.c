@@ -151,7 +151,7 @@ static JIFFYJSON_FORCE_INLINE void jiffy_parser_skip_n_bytes(struct jiffy_parser
 
 #define EXPECT_END(ctx_) ({ \
     if ((ctx_)->data_size != 0 ) \
-        return JSON_ERROR; \
+        return format_error(ctx_, "end of input expected"); \
 })
 
 static const bool is_char_wsp_table[' '+1] = {
@@ -237,7 +237,6 @@ static void skip_wsp_expect_nl_and_spaces(struct jiffy_parser *ctx) {
             ++i;
 
         jiffy_parser_skip_n_bytes(ctx, STRLN("\n") + i);
-        assert(ctx->data[-1] == ' ');
         assert(ctx->data[0] != ' ');
 
         const char c = data[i];
@@ -583,6 +582,10 @@ static json_res_t json_array_parse(struct jiffy_json_value *val, struct jiffy_pa
         return JSON_OK;
     }
     skip_wsp_expect_nl_and_spaces(ctx);
+    if (is_current_char_eq(ctx, ']')) { // fast path for empty array
+        jiffy_parser_skip_one_byte(ctx);
+        return JSON_OK;
+    }
 
     for (;;) {
         struct jiffy_json_value *inner_val = jvector_push_back(&ctx->values_cache);
@@ -619,9 +622,14 @@ static json_res_t json_number_parse(struct jiffy_json_value *val, struct jiffy_p
     val->num_val = strtod(ctx->data, &end);
     uint32_t val_size = end - ctx->data;
     if (!val_size)
-        return JSON_ERROR;
+        return format_error(ctx, "invalid number");
+
+    if (ctx->data[0] == '0' && val_size > STRLN("0") && !memchr(ctx->data, '.', val_size))
+        return format_error(ctx, "integer numbers cannot have leading zeroes");
+
     if (errno)
-        return JSON_ERROR;
+        return format_error(ctx, "invalid number");
+
     jiffy_parser_skip_n_bytes(ctx, val_size);
     return JSON_OK;
 }
@@ -645,7 +653,7 @@ static json_res_t json_bool_parse(struct jiffy_json_value *val, struct jiffy_par
     }
 
     // TODO: case-insensitive
-    return JSON_ERROR;
+    return format_error(ctx, "invalid bool");
 }
 
 static json_res_t json_null_parse(struct jiffy_json_value *val, struct jiffy_parser *ctx) {
@@ -656,7 +664,7 @@ static json_res_t json_null_parse(struct jiffy_json_value *val, struct jiffy_par
     }
 
     // TODO: case-insensitive
-    return JSON_ERROR;
+    return format_error(ctx, "invalid null");
 }
 
 static json_res_t json_object_parse(struct jiffy_json_value *val, struct jiffy_parser *ctx);
@@ -695,7 +703,7 @@ static json_res_t json_value_parse(struct jiffy_json_value *val, struct jiffy_pa
 
     json_value_parser_t parser = handlers[(uint8_t)ctx->data[0]];
     if (JIFFYJSON_UNLIKELY(!parser))
-        return JSON_ERROR;
+        return format_error(ctx, "invalid json value");
 
     return parser(val, ctx);
 }
@@ -740,14 +748,12 @@ static json_res_t json_object_parse(struct jiffy_json_value *val, struct jiffy_p
 }
 
 static json_res_t check_data_end(struct jiffy_parser *ctx) {
-    if (!ctx->data_size)
-        return JSON_ERROR;
-
     uint32_t i;
     for (i = ctx->data_size - 1; i > 0 && IS_CHAR_WSP( (uint8_t)ctx->data[i] ); --i) {};
 
-    if (i == 0 || ctx->data[i] != '}')
-        return JSON_ERROR;
+    assert(i != 0);
+    if (ctx->data[i] != '}')
+        return format_error(ctx, "json should end with '}', but ends with '%c'", ctx->data[i]);
 
     ctx->data_size = i + 1;
     return JSON_OK;
@@ -756,12 +762,20 @@ static json_res_t check_data_end(struct jiffy_parser *ctx) {
 static json_res_t json_parse_impl(struct jiffy_json_value *val, struct jiffy_parser *ctx) {
     if (!is_current_char_eq(ctx, '{'))
         skip_wsp(ctx);
+
+    if (!ctx->data_size)
+        return format_error(ctx, "got no json");
+
+    if (!is_current_char_eq(ctx, '{')) // precheck for better error messages
+        return format_error(ctx, "json should start with '{', but starts with '%c'", ctx->data[0]);
+
     if (JIFFYJSON_UNLIKELY(check_data_end(ctx) != JSON_OK))
         return JSON_ERROR;
 
     json_res_t r = json_object_parse(val, ctx);
     if (JIFFYJSON_UNLIKELY(r != JSON_OK))
         return r;
+
     EXPECT_END(ctx);
     return r;
 }

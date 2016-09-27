@@ -104,7 +104,7 @@ BENCHMARK(test_rapid_wr);
 static void test_strdup(benchmark::State& state) {
     while (state.KeepRunning()) {
         char *r = strndup(data, size);
-        benchmark::ClobberMemory();
+        benchmark::DoNotOptimize(r);
         free(r);
     }
     state.SetBytesProcessed(static_cast<int64_t>(state.iterations()) * size);

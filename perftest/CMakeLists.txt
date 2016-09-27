@@ -42,6 +42,6 @@ target_link_libraries(gbench
 )
 if (NOT ${APPLE})
     target_link_libraries(gbench rt)
-endif (${APPLE})
+endif (NOT ${APPLE})
 
 target_link_libraries(jiffyjson_alone jiffyjson)
